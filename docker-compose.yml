@@ -28,4 +28,4 @@ services:
 volumes:
   sqlite_data:
 
-# restart: unless-stopped
+restart: unless-stopped
