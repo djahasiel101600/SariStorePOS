@@ -4,7 +4,7 @@ from django.core.validators import MinValueValidator
 
 class Product(models.Model):
     name = models.CharField(max_length=200)
-    barcode = models.CharField(max_length=100, blank=True, unique=True, default=None)
+    barcode = models.CharField(max_length=100, blank=True, null=True, unique=True, default=None)
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])

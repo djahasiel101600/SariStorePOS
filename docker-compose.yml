@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   backend:
@@ -16,6 +15,8 @@ services:
       - "8000:8000"
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py makemigrations inventory &&
+             python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     restart: unless-stopped
 

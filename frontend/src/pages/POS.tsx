@@ -1,7 +1,7 @@
 // src/pages/POS.tsx
 import React, { useRef } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProductSearch, useCreateSale } from "@/hooks/api";
+import { useProductSearch, useCreateSale, useProducts } from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -52,6 +52,10 @@ const POS: React.FC = () => {
   const createSaleMutation = useCreateSale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Retrieve all available categories without duplicates
+  const data = useProducts()
+  const categories = Array.from(new Set(data.data?.map(Item => Item.category)));  
 
   // Keyboard shortcuts
   useHotkeys("ctrl+k", (e) => {
@@ -111,7 +115,6 @@ const POS: React.FC = () => {
         })),
       };
 
-      console.log("Sending sale data:", saleData);
 
       await createSaleMutation.mutateAsync(saleData);
 
@@ -150,7 +153,7 @@ const POS: React.FC = () => {
         {/* Search Header */}
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
@@ -162,13 +165,13 @@ const POS: React.FC = () => {
                 />
               </div>
               <Button
-                variant="outline"
-                onClick={handleBarcodeSearch}
-                className="whitespace-nowrap"
-              >
-                <Barcode className="h-4 w-4 mr-2" />
-                Scan
-              </Button>
+                  variant="outline"
+                  onClick={handleBarcodeSearch}
+                  className="whitespace-nowrap"
+                  >
+                  <Barcode className="h-4 w-4 mr-2" />
+                      Scan
+                  </Button>
               {/* Customer Search - Fixed width */}
               <div className="w-full lg:w-80">
                 <CustomerSearch />
@@ -250,13 +253,7 @@ const POS: React.FC = () => {
                   Quick Categories
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    "Snacks",
-                    "Drinks",
-                    "Toiletries",
-                    "Rice",
-                    "Canned Goods",
-                  ].map((category) => (
+                  {categories.map((category) => (
                     <Button
                       key={category}
                       variant="outline"

@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Product } from "@/types";
-import { useCreateProduct, useUpdateProduct } from "@/hooks/api";
+import { useCreateProduct, useUpdateProduct, useProducts } from "@/hooks/api";
 import { toast } from "sonner";
 import { Loader2, X, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ const productSchema = z.object({
     .int()
     .min(0, "Minimum stock level must be positive"),
   category: z.string().optional(),
+  is_active: z.boolean(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -56,7 +57,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
     handleSubmit,
     formState: { errors },
     reset,
-    setValue,
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: product
@@ -68,6 +68,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
           stock_quantity: product.stock_quantity,
           min_stock_level: product.min_stock_level,
           category: product.category || "",
+          is_active: true,
         }
       : {
           stock_quantity: 0,
