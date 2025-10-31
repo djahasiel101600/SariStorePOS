@@ -1,7 +1,8 @@
 // src/pages/POS.tsx
-import React, { useRef } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProductSearch, useCreateSale, useAllProducts } from "@/hooks/api";
+import { useProducts } from "@/hooks/api";
+import { useProductSearch, useCreateSale, useAllProducts, useLowStockProducts, useDeleteProduct } from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -44,6 +45,73 @@ const POS: React.FC = () => {
     setPaymentMethod,
   } = usePOS();
 
+  //
+  const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize] = useState(20);
+    
+    // State for search functionality
+    const [searchMode, setSearchMode] = useState(false);
+
+  
+    // Fetch paginated products
+    const {
+      data: productsResponse,
+    } = useProducts(currentPage, pageSize);
+  
+    // Fetch all products for search (only when triggered)
+    const {
+      data: allProducts = [],
+    } = useAllProducts();
+    
+    // Determine data source based on mode
+    const productsDataSource = useMemo(() => {
+      if (searchMode && searchQuery) {
+        return allProducts;
+      }
+      
+      // Handle paginated response
+      if (productsResponse && typeof productsResponse === 'object' && 'results' in productsResponse) {
+        return productsResponse.results;
+      }
+      
+      // Handle direct array response (fallback)
+      return Array.isArray(productsResponse) ? productsResponse : [];
+    }, [searchMode, searchQuery, allProducts, productsResponse]);
+  
+    // Extract pagination info
+    useMemo(() => {
+      if (productsResponse && typeof productsResponse === 'object' && 'count' in productsResponse) {
+        return {
+          count: productsResponse.count,
+          next: productsResponse.next,
+          previous: productsResponse.previous,
+          totalPages: Math.ceil(productsResponse.count / pageSize),
+        };
+      }
+      
+      // Fallback for non-paginated responses
+      const count = Array.isArray(productsResponse) ? productsResponse.length : productsDataSource.length;
+      return {
+        count,
+        next: null,
+        previous: null,
+        totalPages: Math.ceil(count / pageSize),
+      };
+    }, [productsResponse, productsDataSource, pageSize]);
+  
+    // Safe data handling
+    const productsArray: Product[] = Array.isArray(productsDataSource) ? productsDataSource : [];
+
+    // Get unique categories safely
+    const categories = [
+      ...new Set(
+        productsArray
+          .map((p) => p.category)
+          .filter((category): category is string => Boolean(category))
+      ),
+    ];
+  //
+
   const cartTotal = getCartTotal();
   const cartItemCount = getCartItemCount();
 
@@ -52,10 +120,6 @@ const POS: React.FC = () => {
   const createSaleMutation = useCreateSale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Retrieve all available categories without duplicates
-  const data = useAllProducts()
-  const categories = Array.from(new Set(data.data?.map(Item => Item.category)));  
 
   // Keyboard shortcuts
   useHotkeys("ctrl+k", (e) => {
