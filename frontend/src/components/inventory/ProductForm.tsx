@@ -21,7 +21,8 @@ import {
 // Enhanced schema with better validation
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required").max(100, "Product name is too long"),
-  barcode: z.string().max(50, "Barcode is too long").optional(),
+  barcode: z.union([z.string().max(50, "Barcode is too long"), z.literal(''), z.null()])
+    .transform(val => (val === '' ? null : val)),
   price: z.number()
     .min(0.01, "Price must be at least ₱0.01")
     .max(999999.99, "Price is too high"),
@@ -46,6 +47,7 @@ interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product?: Product | null;
+  prefillData?: Partial<Product> | null;
 }
 
 // Default form values
@@ -61,6 +63,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
   open,
   onOpenChange,
   product,
+  prefillData,
 }) => {
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -115,6 +118,19 @@ const ProductForm: React.FC<ProductFormProps> = ({
           is_active: product.is_active ?? true,
         });
         setImagePreview(product.image || "");
+      } else if (prefillData) {
+          // Creating new product with prefill data
+          reset({
+            name: prefillData.name || "",
+            barcode: prefillData.barcode || "",
+            category: prefillData.category || "",
+            price: prefillData.price || 0,
+            cost_price: prefillData.cost_price || 0,
+            stock_quantity: prefillData.stock_quantity || 0,
+            min_stock_level: prefillData.min_stock_level || 5,
+            is_active: prefillData.is_active ?? true,
+          });
+          setImagePreview("");
       } else {
         // Adding new product
         reset(defaultFormValues);

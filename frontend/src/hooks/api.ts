@@ -17,41 +17,126 @@ export const useDashboardStats = () => {
 };
 
 
-// src/hooks/api.ts - More robust version
-export const useProducts = () => {
-  return useQuery({
-    queryKey: ['products'],
-    queryFn: async (): Promise<Product[]> => {
-      try {
-        const { data } = await api.get('/products/');
+// src/hooks/api.ts
+// export const useProducts = () => {
+//   return useQuery({
+//     queryKey: ['products'],
+//     queryFn: async (): Promise<Product[]> => {
+//       try {
+//         const { data } = await api.get('/products/');
         
+        
+//         // Handle various response formats
+//         if (data && typeof data === 'object') {
+//           // Django REST Framework pagination
+//           if (data.results && Array.isArray(data.results)) {
+//             return data.results;
+//           }
+//           // Some APIs use 'data' key
+//           if (data.data && Array.isArray(data.data)) {
+//             return data.data;
+//           }
+//           // Direct array response
+//           if (Array.isArray(data)) {
+//             return data;
+//           }
+//           // If it's an object with count but no results, return empty
+//           if (data.count !== undefined) {
+//             return [];
+//           }
+//         }
+        
+//         return [];
+//       } catch (error) {
+//         console.error('Error fetching products:', error);
+//         return [];
+//       }
+//     },
+//   });
+// };
+
+// src/hooks/api.ts
+export const useProducts = (page?: number, pageSize?: number) => {
+  return useQuery({
+    queryKey: page !== undefined ? ['products', page, pageSize] : ['products'],
+    queryFn: async (): Promise<{results: Product[], count: number, next: string | null, previous: string | null} | Product[]> => {
+      try {
+        const params: any = {};
+        if (page !== undefined) params.page = page;
+        if (pageSize !== undefined) params.page_size = pageSize;
+        
+        const { data } = await api.get('/products/', { params });
         
         // Handle various response formats
         if (data && typeof data === 'object') {
           // Django REST Framework pagination
           if (data.results && Array.isArray(data.results)) {
-            return data.results;
+            return {
+              results: data.results,
+              count: data.count || data.results.length,
+              next: data.next || null,
+              previous: data.previous || null
+            };
           }
           // Some APIs use 'data' key
           if (data.data && Array.isArray(data.data)) {
-            return data.data;
+            return {
+              results: data.data,
+              count: data.count || data.data.length,
+              next: data.next || null,
+              previous: data.previous || null
+            };
           }
-          // Direct array response
+          // Direct array response (non-paginated)
           if (Array.isArray(data)) {
             return data;
           }
-          // If it's an object with count but no results, return empty
-          if (data.count !== undefined) {
-            return [];
-          }
         }
         
-        return [];
+        return { results: [], count: 0, next: null, previous: null };
       } catch (error) {
         console.error('Error fetching products:', error);
+        return { results: [], count: 0, next: null, previous: null };
+      }
+    },
+  });
+};
+
+// Add a hook for fetching all products (for search)
+export const useAllProducts = () => {
+  return useQuery({
+    queryKey: ['products', 'all'],
+    queryFn: async (): Promise<Product[]> => {
+      try {
+        let allProducts: Product[] = [];
+        let page = 1;
+        let hasMore = true;
+        const pageSize = 100; // Fetch larger pages for efficiency
+
+        while (hasMore) {
+          const params = { page, page_size: pageSize };
+          const { data } = await api.get('/products/', { params });
+          
+          if (data && data.results && Array.isArray(data.results)) {
+            allProducts = [...allProducts, ...data.results];
+            hasMore = !!data.next; // Check if there's a next page
+            page++;
+          } else {
+            hasMore = false;
+          }
+          
+          // Safety limit to prevent infinite loops
+          if (page > 50) break;
+        }
+        
+        return allProducts;
+      } catch (error) {
+        console.error('Error fetching all products:', error);
         return [];
       }
     },
+    // Only fetch when explicitly needed
+    enabled: false,
   });
 };
 
@@ -101,35 +186,6 @@ export const useSales = (startDate?: string, endDate?: string) => {
     },
   });
 };
-
-// export const useCreateSale = () => {
-//   const queryClient = useQueryClient();
-  
-//   return useMutation({
-//     mutationFn: async (saleData: any) => {
-//       // Transform string prices to numbers before sending
-//       const transformedData = {
-//         ...saleData,
-//         items: saleData.items.map((item: any) => ({
-//           ...item,
-//           unit_price: typeof item.unit_price === 'string' 
-//             ? parseFloat(item.unit_price) 
-//             : item.unit_price
-//         }))
-//       };
-      
-//       console.log('Transformed sale data:', transformedData);
-      
-//       const { data } = await api.post('/sales/', transformedData);
-//       return data;
-//     },
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: ['sales'] });
-//       queryClient.invalidateQueries({ queryKey: ['dashboard', 'stats'] });
-//       queryClient.invalidateQueries({ queryKey: ['products'] });
-//     },
-//   });
-// };
 
 // In src/hooks/api.ts - Update the useCreateSale hook
 export const useCreateSale = () => {

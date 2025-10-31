@@ -1,7 +1,7 @@
 // src/pages/POS.tsx
 import React, { useRef } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProductSearch, useCreateSale, useProducts } from "@/hooks/api";
+import { useProductSearch, useCreateSale, useAllProducts } from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -54,7 +54,7 @@ const POS: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Retrieve all available categories without duplicates
-  const data = useProducts()
+  const data = useAllProducts()
   const categories = Array.from(new Set(data.data?.map(Item => Item.category)));  
 
   // Keyboard shortcuts
@@ -155,7 +155,7 @@ const POS: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex gap-3 flex-wrap">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-[18px] transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
                   ref={searchInputRef}
                   placeholder="Search products by name or barcode (Ctrl+K)"

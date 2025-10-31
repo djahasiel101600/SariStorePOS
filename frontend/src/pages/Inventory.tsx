@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   useProducts,
   useLowStockProducts,
   useDeleteProduct,
+  useAllProducts,
 } from "@/hooks/api";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -17,6 +18,12 @@ import {
   Package,
   Loader2,
   RefreshCw,
+  Barcode,
+  Tag,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,28 +48,79 @@ import {
 import ProductForm from "@/components/inventory/ProductForm";
 
 const Inventory: React.FC = () => {
-  const {
-    data: products,
-    isLoading,
-    error: productsError,
-    refetch: refetchProducts,
-  } = useProducts();
-
-  const { data: lowStockProducts } = useLowStockProducts();
-  const deleteProduct = useDeleteProduct();
-
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [showQuickAddOptions, setShowQuickAddOptions] = useState(false);
+  const [prefillData, setPrefillData] = useState<Partial<Product> | null>(null);
+  
+  // State for search functionality
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchTrigger, setSearchTrigger] = useState(0);
+
+  // Fetch paginated products
+  const {
+    data: productsResponse,
+    isLoading,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts(currentPage, pageSize);
+
+  // Fetch all products for search (only when triggered)
+  const {
+    data: allProducts = [],
+    refetch: fetchAllProducts,
+    isLoading: isFetchingAll,
+    isFetching: isFetchingAllProducts,
+  } = useAllProducts();
+
+  const { data: lowStockProducts } = useLowStockProducts();
+  const deleteProduct = useDeleteProduct();
+
+  // Determine data source based on mode
+  const productsDataSource = useMemo(() => {
+    if (searchMode && searchQuery) {
+      return allProducts;
+    }
+    
+    // Handle paginated response
+    if (productsResponse && typeof productsResponse === 'object' && 'results' in productsResponse) {
+      return productsResponse.results;
+    }
+    
+    // Handle direct array response (fallback)
+    return Array.isArray(productsResponse) ? productsResponse : [];
+  }, [searchMode, searchQuery, allProducts, productsResponse]);
+
+  // Extract pagination info
+  const paginationInfo = useMemo(() => {
+    if (productsResponse && typeof productsResponse === 'object' && 'count' in productsResponse) {
+      return {
+        count: productsResponse.count,
+        next: productsResponse.next,
+        previous: productsResponse.previous,
+        totalPages: Math.ceil(productsResponse.count / pageSize),
+      };
+    }
+    
+    // Fallback for non-paginated responses
+    const count = Array.isArray(productsResponse) ? productsResponse.length : productsDataSource.length;
+    return {
+      count,
+      next: null,
+      previous: null,
+      totalPages: Math.ceil(count / pageSize),
+    };
+  }, [productsResponse, productsDataSource, pageSize]);
 
   // Safe data handling
-  const productsArray: Product[] = Array.isArray(products) ? products : [];
-  const lowStockArray: Product[] = Array.isArray(lowStockProducts)
-    ? lowStockProducts
-    : [];
+  const productsArray: Product[] = Array.isArray(productsDataSource) ? productsDataSource : [];
+  const lowStockArray: Product[] = Array.isArray(lowStockProducts) ? lowStockProducts : [];
 
   // Get unique categories safely
   const categories = [
@@ -73,25 +131,56 @@ const Inventory: React.FC = () => {
     ),
   ];
 
-  // Filter products safely
-  const filteredProducts = productsArray.filter((product) => {
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.barcode?.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter products based on search and filters
+  const filteredProducts = useMemo(() => {
+    return productsArray.filter((product) => {
+      const matchesSearch =
+        !searchQuery ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.barcode?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory =
-      categoryFilter === "all" || product.category === categoryFilter;
+      const matchesCategory =
+        categoryFilter === "all" || product.category === categoryFilter;
 
-    const matchesStock =
-      stockFilter === "all" ||
-      (stockFilter === "low" && product.needs_restock) ||
-      (stockFilter === "out" && product.stock_quantity === 0) ||
-      (stockFilter === "in" &&
-        product.stock_quantity > 0 &&
-        !product.needs_restock);
+      const matchesStock =
+        stockFilter === "all" ||
+        (stockFilter === "low" && product.needs_restock) ||
+        (stockFilter === "out" && product.stock_quantity === 0) ||
+        (stockFilter === "in" &&
+          product.stock_quantity > 0 &&
+          !product.needs_restock);
 
-    return matchesSearch && matchesCategory && matchesStock;
-  });
+      return matchesSearch && matchesCategory && matchesStock;
+    });
+  }, [productsArray, searchQuery, categoryFilter, stockFilter]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (searchQuery.trim().length === 0) {
+      setSearchMode(false);
+      return;
+    }
+
+    // Only trigger search for queries longer than 2 characters
+    if (searchQuery.trim().length > 2) {
+      const timer = setTimeout(() => {
+        setSearchMode(true);
+        fetchAllProducts();
+      }, 500); // 500ms debounce
+
+      return () => clearTimeout(timer);
+    }
+  }, [searchQuery, searchTrigger]);
+
+  // Check if search query looks like a barcode (numeric)
+  const isBarcodeSearch = useMemo(() => {
+    return /^\d+$/.test(searchQuery.trim());
+  }, [searchQuery]);
+
+  // Check if we should show quick add options
+  const shouldShowQuickAdd = useMemo(() => {
+    return searchQuery.trim().length > 0 && filteredProducts.length === 0 && !isFetchingAll;
+  }, [searchQuery, filteredProducts.length, isFetchingAll]);
 
   // Count out of stock products safely
   const outOfStockCount = productsArray.filter(
@@ -100,6 +189,7 @@ const Inventory: React.FC = () => {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    setPrefillData(null);
     setIsFormOpen(true);
   };
 
@@ -110,6 +200,7 @@ const Inventory: React.FC = () => {
       await deleteProduct.mutateAsync(productToDelete.id);
       toast.success("Product deleted successfully");
       setProductToDelete(null);
+      refetchProducts();
     } catch (error) {
       toast.error("Failed to delete product");
     }
@@ -117,13 +208,63 @@ const Inventory: React.FC = () => {
 
   const handleAddProduct = () => {
     setEditingProduct(null);
+    setPrefillData(null);
     setIsFormOpen(true);
+  };
+
+  const handleQuickAdd = (prefillBarcode: boolean = false) => {
+    const newPrefillData: Partial<Product> = {
+      name: prefillBarcode && isBarcodeSearch ? "" : searchQuery,
+      barcode: prefillBarcode || isBarcodeSearch ? searchQuery : "",
+      price: 0,
+      cost_price: 0,
+      stock_quantity: 0,
+      min_stock_level: 5,
+      is_active: true,
+    };
+
+    setPrefillData(newPrefillData);
+    setEditingProduct(null);
+    setIsFormOpen(true);
+    setSearchQuery("");
+    setShowQuickAddOptions(false);
+    setSearchMode(false);
   };
 
   const handleFormClose = () => {
     setIsFormOpen(false);
     setEditingProduct(null);
+    setPrefillData(null);
+    refetchProducts();
   };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    
+    if (value.trim().length > 0) {
+      setShowQuickAddOptions(true);
+      setSearchTrigger(prev => prev + 1); // Trigger search
+    } else {
+      setShowQuickAddOptions(false);
+      setSearchMode(false);
+    }
+  };
+
+  const handleSearchBlur = () => {
+    setTimeout(() => setShowQuickAddOptions(false), 200);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    setSearchMode(false);
+    setSearchQuery("");
+  };
+
+  // Clear search mode when filters change
+  useEffect(() => {
+    setSearchMode(false);
+  }, [categoryFilter, stockFilter]);
 
   if (isLoading) {
     return (
@@ -172,7 +313,7 @@ const Inventory: React.FC = () => {
                   Total Products
                 </p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {productsArray.length}
+                  {paginationInfo.count}
                 </p>
               </div>
               <div className="p-3 bg-blue-100 rounded-full">
@@ -233,7 +374,6 @@ const Inventory: React.FC = () => {
         </Card>
       </div>
 
-      {/* Rest of the component remains the same, just use filteredProducts safely */}
       {/* Filters and Search */}
       <Card>
         <CardContent className="p-4">
@@ -243,9 +383,69 @@ const Inventory: React.FC = () => {
               <Input
                 placeholder="Search products by name or barcode..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
+                onBlur={handleSearchBlur}
                 className="pl-10"
               />
+              
+              {/* Search status indicator */}
+              {isFetchingAllProducts && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                </div>
+              )}
+              
+              {searchMode && !isFetchingAllProducts && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <Badge variant="secondary" className="text-xs">
+                    Searching all products
+                  </Badge>
+                </div>
+              )}
+              
+              {/* Quick Add Dropdown */}
+              {showQuickAddOptions && shouldShowQuickAdd && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-gray-500 px-2 py-1">
+                      Quick Add Options
+                    </div>
+                    
+                    <button
+                      onClick={() => handleQuickAdd(false)}
+                      className="flex items-center gap-2 w-full p-2 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors"
+                    >
+                      <Tag className="h-4 w-4 text-blue-600" />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">
+                          {isBarcodeSearch ? `Create product with name` : `Create product "${searchQuery}"`}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {isBarcodeSearch 
+                            ? `Name: ${searchQuery}`
+                            : "Pre-fills product name"
+                          }
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleQuickAdd(true)}
+                      className="flex items-center gap-2 w-full p-2 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors"
+                    >
+                      <Barcode className="h-4 w-4 text-green-600" />
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">
+                          Create product with barcode
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Sets barcode: {searchQuery}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <DropdownMenu>
@@ -305,15 +505,84 @@ const Inventory: React.FC = () => {
 
       {/* Products Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Products ({filteredProducts.length})</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>
+            Products ({searchMode ? filteredProducts.length : paginationInfo.count})
+            {searchQuery && (
+              <span className="text-sm font-normal text-gray-500 ml-2">
+                for "{searchQuery}"
+                {searchMode && " (searching all products)"}
+              </span>
+            )}
+          </CardTitle>
+          
+          {/* Pagination Controls - Only show when not searching */}
+          {!searchMode && paginationInfo.totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-gray-600">
+                Page {currentPage} of {paginationInfo.totalPages}
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === paginationInfo.totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(paginationInfo.totalPages)}
+                  disabled={currentPage === paginationInfo.totalPages}
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {filteredProducts.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Package className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>No products found</p>
-              <p className="text-sm">Try adjusting your search or filters</p>
+              {searchQuery ? (
+                <>
+                  <p>No products found for "{searchQuery}"</p>
+                  <p className="text-sm mt-2">
+                    Try a different search or{' '}
+                    <Button 
+                      variant="link" 
+                      className="p-0 h-auto" 
+                      onClick={() => handleQuickAdd(false)}
+                    >
+                      add it as a new product
+                    </Button>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>No products found</p>
+                  <p className="text-sm">Try adjusting your search or filters</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -414,6 +683,7 @@ const Inventory: React.FC = () => {
         open={isFormOpen}
         onOpenChange={handleFormClose}
         product={editingProduct}
+        prefillData={prefillData}
       />
 
       {/* Delete Confirmation Dialog */}
