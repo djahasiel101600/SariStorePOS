@@ -361,6 +361,22 @@ const Inventory: React.FC = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
+                <p className="text-sm font-medium text-gray-600">Total Worth (to do)</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {categories.length}
+                </p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <Package className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-medium text-gray-600">Categories</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
                   {categories.length}
