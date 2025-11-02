@@ -2,13 +2,71 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 
+# Unit Types for products
+UNIT_TYPES = [
+    ('piece', 'Piece'),
+    ('kg', 'Kilogram'),
+    ('g', 'Gram'),
+    ('liter', 'Liter'),
+    ('ml', 'Milliliter'),
+    ('bundle', 'Bundle'),
+    ('pack', 'Pack'),
+]
+
+# Pricing Models
+PRICING_MODELS = [
+    ('fixed_per_unit', 'Fixed Price Per Unit'),
+    ('fixed_per_weight', 'Fixed Price Per Weight/Volume'),
+    ('variable', 'Variable Pricing'),
+]
+
 class Product(models.Model):
     name = models.CharField(max_length=200)
     barcode = models.CharField(max_length=100, blank=True, null=True, unique=True, default=None)
-    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    stock_quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    min_stock_level = models.IntegerField(default=5, validators=[MinValueValidator(0)])
+    
+    # Unit Information
+    unit_type = models.CharField(max_length=20, choices=UNIT_TYPES, default='piece')
+    
+    # Pricing Model
+    pricing_model = models.CharField(max_length=20, choices=PRICING_MODELS, default='fixed_per_unit')
+    
+    # Price Fields
+    # For fixed_per_unit: price per piece/pack
+    # For fixed_per_weight: price per kg/g/L
+    # For variable: suggested/base price (can be overridden at sale)
+    price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(0)],
+        null=True,  # Can be null for pure variable pricing
+        blank=True,
+        help_text="Price per unit. Null for variable pricing items"
+    )
+    
+    # Cost tracking
+    cost_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True,
+        help_text="Cost per unit. For variable pricing, this is cost per unit_type"
+    )
+    
+    # Stock (now DecimalField to support weight/volume)
+    stock_quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,  # Supports grams (0.001 kg) or milliliters
+        default=0,
+        validators=[MinValueValidator(0)]
+    )
+    min_stock_level = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=5,
+        validators=[MinValueValidator(0)]
+    )
+    
     category = models.CharField(max_length=100, blank=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -27,9 +85,24 @@ class Product(models.Model):
 
     @property
     def profit_margin(self):
-        if self.cost_price > 0:
+        if self.cost_price and self.price and self.cost_price > 0:
             return ((self.price - self.cost_price) / self.cost_price) * 100
         return 0
+    
+    def calculate_price_for_quantity(self, quantity):
+        """Calculate total price for given quantity"""
+        if self.pricing_model == 'variable' or not self.price:
+            # For variable pricing, price is set at sale time
+            return None
+        return float(self.price) * float(quantity)
+    
+    def calculate_quantity_for_amount(self, amount):
+        """For variable pricing: calculate quantity for given amount"""
+        if self.pricing_model != 'variable' or not self.price:
+            return None
+        if self.price == 0:
+            return None
+        return float(amount) / float(self.price)
 
 class Customer(models.Model):
     name = models.CharField(max_length=200)
@@ -71,15 +144,33 @@ class Sale(models.Model):
 class SaleItem(models.Model):
     sale = models.ForeignKey(Sale, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.IntegerField(validators=[MinValueValidator(1)])
+    
+    # Quantity (now DecimalField to support weight/volume)
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(0.001)]  # Minimum 0.001
+    )
+    
+    # Unit price at time of sale (important for variable pricing)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # For variable pricing: original customer-requested amount
+    # This helps track: "Customer wanted Php 5 worth, got X quantity"
+    requested_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="For variable pricing: amount customer requested"
+    )
 
     class Meta:
         db_table = 'sale_items'
 
     @property
     def total_price(self):
-        return self.quantity * self.unit_price
+        return float(self.quantity) * float(self.unit_price)
 
 class Purchase(models.Model):
     supplier = models.CharField(max_length=200)
@@ -93,7 +184,13 @@ class Purchase(models.Model):
 class PurchaseItem(models.Model):
     purchase = models.ForeignKey(Purchase, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.IntegerField(validators=[MinValueValidator(1)])
+    
+    # Quantity (now DecimalField to support weight/volume)
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(0.001)]
+    )
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:

@@ -23,20 +23,24 @@ const productSchema = z.object({
   name: z.string().min(1, "Product name is required").max(100, "Product name is too long"),
   barcode: z.union([z.string().max(50, "Barcode is too long"), z.literal(''), z.null()])
     .transform(val => (val === '' ? null : val)),
-  price: z.number()
-    .min(0.01, "Price must be at least ₱0.01")
-    .max(999999.99, "Price is too high"),
+    unit_type: z.enum(['piece', 'kg', 'g', 'liter', 'ml', 'bundle', 'pack']),
+    pricing_model: z.enum(['fixed_per_unit', 'fixed_per_weight', 'variable']),
+  price: z.union([
+    z.number().min(0.01, "Price must be at least ₱0.01").max(999999.99, "Price is too high"),
+    z.null(),
+    z.undefined()
+  ]).optional(),
   cost_price: z.number()
     .min(0, "Cost price must be positive")
-    .max(999999.99, "Cost price is too high"),
+    .max(999999.99, "Cost price is too high")
+    .nullable()
+    .optional(),
   stock_quantity: z.number()
-    .int("Stock must be a whole number")
     .min(0, "Stock must be positive")
-    .max(999999, "Stock quantity is too high"),
+    .max(999999.999, "Stock quantity is too high"),
   min_stock_level: z.number()
-    .int("Minimum stock level must be a whole number")
     .min(0, "Minimum stock level must be positive")
-    .max(9999, "Minimum stock level is too high"),
+    .max(9999.999, "Minimum stock level is too high"),
   category: z.string().max(50, "Category name is too long").optional(),
   is_active: z.boolean(),
 });
@@ -56,6 +60,8 @@ const defaultFormValues: Partial<ProductFormData> = {
   min_stock_level: 5,
   price: 0,
   cost_price: 0,
+  unit_type: 'piece',
+  pricing_model: 'fixed_per_unit',
   is_active: true,
 };
 
@@ -87,8 +93,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
   });
 
   // Calculate profit margin from watched values
-  const price = watch("price");
-  const costPrice = watch("cost_price");
+  const price = watch("price") || 0;
+  const costPrice = watch("cost_price") || 0;
+  const pricingModel = watch("pricing_model");
+  const unitType = watch("unit_type");
   const profitMargin = price > 0 && costPrice >= 0 
     ? ((price - costPrice) / price) * 100 
     : 0;
@@ -111,10 +119,12 @@ const ProductForm: React.FC<ProductFormProps> = ({
           name: product.name || "",
           barcode: product.barcode || "",
           category: product.category || "",
-          price: product.price || 0,
-          cost_price: product.cost_price || 0,
+          price: product.price ?? null,
+          cost_price: product.cost_price ?? null,
           stock_quantity: product.stock_quantity || 0,
           min_stock_level: product.min_stock_level || 5,
+          unit_type: product.unit_type || 'piece',
+          pricing_model: product.pricing_model || 'fixed_per_unit',
           is_active: product.is_active ?? true,
         });
         setImagePreview(product.image || "");
@@ -124,10 +134,12 @@ const ProductForm: React.FC<ProductFormProps> = ({
             name: prefillData.name || "",
             barcode: prefillData.barcode || "",
             category: prefillData.category || "",
-            price: prefillData.price || 0,
-            cost_price: prefillData.cost_price || 0,
+            price: prefillData.price ?? null,
+            cost_price: prefillData.cost_price ?? null,
             stock_quantity: prefillData.stock_quantity || 0,
             min_stock_level: prefillData.min_stock_level || 5,
+            unit_type: prefillData.unit_type || 'piece',
+            pricing_model: prefillData.pricing_model || 'fixed_per_unit',
             is_active: prefillData.is_active ?? true,
           });
           setImagePreview("");
@@ -337,20 +349,74 @@ const ProductForm: React.FC<ProductFormProps> = ({
               )}
             </div>
 
+            {/* Unit Type */}
+            <div>
+              <Label htmlFor="unit_type">Unit Type *</Label>
+              <select
+                id="unit_type"
+                {...register("unit_type")}
+                disabled={isLoading}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="piece">Piece</option>
+                <option value="kg">Kilogram (kg)</option>
+                <option value="g">Gram (g)</option>
+                <option value="liter">Liter (L)</option>
+                <option value="ml">Milliliter (ml)</option>
+                <option value="bundle">Bundle</option>
+                <option value="pack">Pack</option>
+              </select>
+              {errors.unit_type && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.unit_type.message}
+                </p>
+              )}
+            </div>
+
+            {/* Pricing Model */}
+            <div>
+              <Label htmlFor="pricing_model">Pricing Model *</Label>
+              <select
+                id="pricing_model"
+                {...register("pricing_model")}
+                disabled={isLoading}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="fixed_per_unit">Fixed Price Per Unit</option>
+                <option value="fixed_per_weight">Fixed Price Per Weight/Volume</option>
+                <option value="variable">Variable Pricing</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {pricingModel === 'variable' 
+                  ? 'Price determined at sale time'
+                  : pricingModel === 'fixed_per_weight'
+                  ? 'Price per ' + (unitType === 'kg' ? 'kilogram' : unitType === 'g' ? 'gram' : unitType)
+                  : 'Fixed price per unit'}
+              </p>
+              {errors.pricing_model && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.pricing_model.message}
+                </p>
+              )}
+            </div>
+
             {/* Selling Price */}
             <div>
-              <Label htmlFor="price">Selling Price (₱) *</Label>
+              <Label htmlFor="price">
+                {pricingModel === 'variable' ? 'Suggested Price (₱)' : 'Selling Price (₱)'} 
+                {pricingModel !== 'variable' && ' *'}
+              </Label>
               <Input
                 id="price"
                 type="number"
                 step="0.01"
-                min="0.01"
+                min="0"
                 {...register("price", { 
                   valueAsNumber: true,
-                  min: 0.01
+                  setValueAs: (value) => value === "" ? null : parseFloat(value)
                 })}
-                placeholder="0.00"
-                disabled={isLoading}
+                placeholder={pricingModel === 'variable' ? "Optional" : "0.00"}
+                disabled={isLoading || pricingModel === 'variable'}
                 className={errors.price ? "border-red-500" : ""}
               />
               {errors.price && (
@@ -382,10 +448,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             {/* Current Stock */}
             <div>
-              <Label htmlFor="stock_quantity">Current Stock *</Label>
+              <Label htmlFor="stock_quantity">Current Stock ({unitType}) *</Label>
               <Input
                 id="stock_quantity"
                 type="number"
+                step="0.001"
                 min="0"
                 {...register("stock_quantity", { valueAsNumber: true })}
                 placeholder="0"
@@ -401,10 +468,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             {/* Minimum Stock Level */}
             <div>
-              <Label htmlFor="min_stock_level">Low Stock Alert Level *</Label>
+              <Label htmlFor="min_stock_level">Low Stock Alert Level ({unitType}) *</Label>
               <Input
                 id="min_stock_level"
                 type="number"
+                step="0.001"
                 min="0"
                 {...register("min_stock_level", { valueAsNumber: true })}
                 placeholder="5"

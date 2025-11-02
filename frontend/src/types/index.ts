@@ -2,12 +2,19 @@
 // src/types/index.ts
 export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'utang';
 
+export type UnitType = 'piece' | 'kg' | 'g' | 'liter' | 'ml' | 'bundle' | 'pack';
+export type PricingModel = 'fixed_per_unit' | 'fixed_per_weight' | 'variable';
+
 export interface Product {
   id: number;
   name: string;
   barcode: string | null;
-  price: number;
-  cost_price: number;
+  unit_type: UnitType;
+  unit_type_display?: string;
+  pricing_model: PricingModel;
+  pricing_model_display?: string;
+  price: number | null;
+  cost_price: number | null;
   stock_quantity: number;
   min_stock_level: number;
   category: string;
@@ -34,6 +41,7 @@ export interface SaleItem {
   product_name: string;
   quantity: number;
   unit_price: number;
+  requested_amount?: number | null;
   total_price: number;
 }
 
@@ -86,6 +94,7 @@ export interface CreateSaleData {
     product_id: number;
     quantity: number;
     unit_price: number;
+    requested_amount?: number | null;
   }>;
 }
 

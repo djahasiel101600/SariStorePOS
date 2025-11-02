@@ -1,3 +1,4 @@
+// /src/pages/Inventory.tsx 
 import React, { useState, useMemo, useEffect } from "react";
 import {
   useProducts,
@@ -401,7 +402,7 @@ const Inventory: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Worth</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
                   ₱ {allProducts
-                    .map((p) => p.price * p.stock_quantity)
+                    .map((p) => (p.price == null ? 0 : p.price) * p.stock_quantity)
                     .reduce((a, b) => a + b, 0)
                     .toLocaleString()}
                 </p>
@@ -672,10 +673,10 @@ const Inventory: React.FC = () => {
                       </td>
                       <td className="py-3 px-4">{product.category || "-"}</td>
                       <td className="py-3 px-4 font-semibold text-green-600">
-                        {formatCurrency(product.price)}
+                        {formatCurrency(product.price == null ? 0 : product.price)}
                       </td>
                       <td className="py-3 px-4 text-gray-600">
-                        {formatCurrency(product.cost_price)}
+                        {formatCurrency(product.cost_price == null ? 0 : product.cost_price)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">

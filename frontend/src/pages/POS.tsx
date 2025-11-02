@@ -1,8 +1,7 @@
 // src/pages/POS.tsx
-import React, { useRef, useState, useMemo } from "react";
+import React, { useRef } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProducts } from "@/hooks/api";
-import { useProductSearch, useCreateSale, useAllProducts, useLowStockProducts, useDeleteProduct } from "@/hooks/api";
+import { useProductSearch, useCreateSale } from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -34,6 +33,8 @@ const POS: React.FC = () => {
     addToCart,
     removeFromCart,
     updateQuantity,
+    updateUnitPrice,
+    updateRequestedAmount,
     clearCart,
     setSearchQuery,
     setProcessing,
@@ -45,72 +46,7 @@ const POS: React.FC = () => {
     setPaymentMethod,
   } = usePOS();
 
-  //
-  const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize] = useState(20);
-    
-    // State for search functionality
-    const [searchMode, setSearchMode] = useState(false);
-
-  
-    // Fetch paginated products
-    const {
-      data: productsResponse,
-    } = useProducts(currentPage, pageSize);
-  
-    // Fetch all products for search (only when triggered)
-    const {
-      data: allProducts = [],
-    } = useAllProducts();
-    
-    // Determine data source based on mode
-    const productsDataSource = useMemo(() => {
-      if (searchMode && searchQuery) {
-        return allProducts;
-      }
-      
-      // Handle paginated response
-      if (productsResponse && typeof productsResponse === 'object' && 'results' in productsResponse) {
-        return productsResponse.results;
-      }
-      
-      // Handle direct array response (fallback)
-      return Array.isArray(productsResponse) ? productsResponse : [];
-    }, [searchMode, searchQuery, allProducts, productsResponse]);
-  
-    // Extract pagination info
-    useMemo(() => {
-      if (productsResponse && typeof productsResponse === 'object' && 'count' in productsResponse) {
-        return {
-          count: productsResponse.count,
-          next: productsResponse.next,
-          previous: productsResponse.previous,
-          totalPages: Math.ceil(productsResponse.count / pageSize),
-        };
-      }
-      
-      // Fallback for non-paginated responses
-      const count = Array.isArray(productsResponse) ? productsResponse.length : productsDataSource.length;
-      return {
-        count,
-        next: null,
-        previous: null,
-        totalPages: Math.ceil(count / pageSize),
-      };
-    }, [productsResponse, productsDataSource, pageSize]);
-  
-    // Safe data handling
-    const productsArray: Product[] = Array.isArray(productsDataSource) ? productsDataSource : [];
-
-    // Get unique categories safely
-    const categories = [
-      ...new Set(
-        productsArray
-          .map((p) => p.category)
-          .filter((category): category is string => Boolean(category))
-      ),
-    ];
-  //
+  // POS page relies on server-side search results; removed local pagination/search mode
 
   const cartTotal = getCartTotal();
   const cartItemCount = getCartItemCount();
@@ -139,8 +75,16 @@ const POS: React.FC = () => {
   });
 
   const handleAddToCart = (product: Product) => {
-    addToCart(product);
-    toast.success(`Added ${product.name} to cart`);
+    // For variable pricing, we might want to show a dialog for amount
+    // For now, just add with default quantity
+    const defaultQuantity = product.unit_type === 'piece' ? 1 : 0.1;
+    addToCart(product, defaultQuantity);
+    
+    if (product.pricing_model === 'variable') {
+      toast.info(`Added ${product.name}. Set quantity/price in cart for variable pricing.`);
+    } else {
+      toast.success(`Added ${product.name} to cart`);
+    }
     setSearchQuery("");
   };
 
@@ -170,12 +114,13 @@ const POS: React.FC = () => {
 
       const saleData = {
         customer: customer?.id || null,
-        payment_method: paymentMethod, // Now includes 'debt'
+        payment_method: paymentMethod,
         total_amount: totalAmount,
         items: cart.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
           unit_price: item.unitPrice,
+          requested_amount: item.requestedAmount || null,
         })),
       };
 
@@ -292,11 +237,18 @@ const POS: React.FC = () => {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold text-green-600">
-                        {formatCurrency(product.price)}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-lg font-bold text-green-600">
+                          {product.pricing_model === 'variable' 
+                            ? (product.price ? `~${formatCurrency(product.price)}/${product.unit_type}` : 'Variable')
+                            : formatCurrency(product.price || 0)}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {product.unit_type_display || product.unit_type}
+                        </span>
+                      </div>
                       <span className="text-sm text-gray-500">
-                        Stock: {product.stock_quantity}
+                        Stock: {product.stock_quantity} {product.unit_type}
                       </span>
                     </div>
 
@@ -310,26 +262,7 @@ const POS: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Access Categories when no search */}
-            {!searchQuery && !searching && (
-              <div className="mt-6">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">
-                  Quick Categories
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map((category) => (
-                    <Button
-                      key={category}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSearchQuery(category)}
-                    >
-                      {category}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Quick Categories removed for simplicity in POS */}
           </CardContent>
         </Card>
       </div>
@@ -373,8 +306,48 @@ const POS: React.FC = () => {
                         <h4 className="font-medium text-sm truncate">
                           {item.product.name}
                         </h4>
-                        <p className="text-green-600 font-semibold">
-                          {formatCurrency(item.unitPrice)}
+                        <div className="flex items-center gap-2">
+                          <p className="text-green-600 font-semibold">
+                            {formatCurrency(item.unitPrice)}/{item.product.unit_type}
+                          </p>
+                          {item.requestedAmount && (
+                            <span className="text-xs text-gray-500">
+                              (Requested: {formatCurrency(item.requestedAmount)})
+                            </span>
+                          )}
+                        </div>
+                        {item.product.pricing_model === 'variable' && (
+                          <div className="mt-1 flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={Number.isFinite(item.unitPrice) ? item.unitPrice : 0}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                updateUnitPrice(item.product.id, isNaN(val) ? 0 : val);
+                              }}
+                              className="w-24 text-center font-medium border rounded px-2 py-1 text-sm"
+                              disabled={isProcessing}
+                            />
+                            <span className="text-xs text-gray-500">Unit price</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.requestedAmount ?? ''}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                updateRequestedAmount(item.product.id, isNaN(val) ? 0 : val);
+                              }}
+                              placeholder="₱ amount"
+                              className="w-28 text-center font-medium border rounded px-2 py-1 text-sm"
+                              disabled={isProcessing}
+                            />
+                          </div>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          Total: {formatCurrency(item.unitPrice * item.quantity)}
                         </p>
                       </div>
 
@@ -383,25 +356,38 @@ const POS: React.FC = () => {
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity - 1)
-                          }
+                          onClick={() => {
+                            const newQty = Math.max(0.001, item.quantity - (item.product.unit_type === 'piece' ? 1 : 0.1));
+                            updateQuantity(item.product.id, parseFloat(newQty.toFixed(3)));
+                          }}
                           disabled={isProcessing}
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
 
-                        <span className="w-8 text-center font-medium">
-                          {item.quantity}
-                        </span>
+                        <input
+                          type="number"
+                          step={item.product.unit_type === 'piece' ? '1' : '0.001'}
+                          min="0.001"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value) || 0.001;
+                            updateQuantity(item.product.id, value);
+                          }}
+                          className="w-16 text-center font-medium border rounded px-2 py-1 text-sm"
+                          disabled={isProcessing}
+                        />
 
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() =>
-                            updateQuantity(item.product.id, item.quantity + 1)
-                          }
+                          onClick={() => {
+                            const newQty = item.quantity + (item.product.unit_type === 'piece' ? 1 : 0.1);
+                            if (newQty <= item.product.stock_quantity) {
+                              updateQuantity(item.product.id, parseFloat(newQty.toFixed(3)));
+                            }
+                          }}
                           disabled={
                             isProcessing ||
                             item.quantity >= item.product.stock_quantity

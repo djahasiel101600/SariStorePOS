@@ -6,6 +6,7 @@ interface CartItem {
   product: Product;
   quantity: number;
   unitPrice: number;
+  requestedAmount?: number | null; // For variable pricing items
 }
 
 interface POSState {
@@ -20,6 +21,8 @@ interface POSState {
   addToCart: (product: Product, quantity?: number) => void;
   removeFromCart: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
+  updateUnitPrice: (productId: number, unitPrice: number) => void; // NEW: override unit price in cart only
+  updateRequestedAmount: (productId: number, requestedAmount: number) => void; // NEW
   clearCart: () => void;
   setCustomer: (customer: Customer | null) => void;
   setSearchQuery: (query: string) => void;
@@ -95,7 +98,7 @@ export const usePOS = create<POSState>((set, get) => ({
     set({
       cart: state.cart.map(item =>
         item.product.id === productId
-          ? { ...item, quantity }
+          ? { ...item, quantity: Number.isFinite(quantity) ? quantity : item.quantity }
           : item
       )
     });
@@ -123,6 +126,40 @@ export const usePOS = create<POSState>((set, get) => ({
 
   setPaymentMethod: (method) => {
     set({ paymentMethod: method });
+  },
+
+  // NEW: override unit price only in cart
+  updateUnitPrice: (productId, unitPrice) => {
+    const state = get();
+    const safePrice = Math.max(0, Number.isFinite(unitPrice) ? unitPrice : 0);
+    set({
+      cart: state.cart.map(item =>
+        item.product.id === productId
+          ? { ...item, unitPrice: safePrice }
+          : item
+      )
+    });
+  },
+
+  // NEW: store requested amount and recompute quantity = requestedAmount / unitPrice
+  updateRequestedAmount: (productId, requestedAmount) => {
+    const state = get();
+    set({
+      cart: state.cart.map(item => {
+        if (item.product.id !== productId) return item;
+        const safeAmount = Math.max(0, Number.isFinite(requestedAmount) ? requestedAmount : 0);
+        const price = item.unitPrice || 0;
+        let quantity = item.quantity;
+        if (price > 0) {
+          const rawQty = safeAmount / price;
+          // Round to 3 decimals to match backend precision, and clamp to stock
+          const rounded = Math.max(0.001, parseFloat(rawQty.toFixed(3)));
+          const maxQty = typeof item.product.stock_quantity === 'number' ? item.product.stock_quantity : Number(item.product.stock_quantity) || rounded;
+          quantity = Math.min(rounded, maxQty);
+        }
+        return { ...item, requestedAmount: safeAmount, quantity };
+      })
+    });
   },
 
 

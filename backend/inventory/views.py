@@ -6,6 +6,7 @@ from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
+from decimal import Decimal
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem
 from .serializers import *
 
@@ -74,19 +75,23 @@ class SaleViewSet(viewsets.ModelViewSet):
             # Validate stock and calculate total
             for item_data in items_data:
                 product = Product.objects.get(id=item_data['product_id'])
-                if product.stock_quantity < item_data['quantity']:
+                quantity = Decimal(str(item_data['quantity']))
+                
+                if product.stock_quantity < quantity:
                     return Response(
-                        {'error': f'Insufficient stock for {product.name}. Available: {product.stock_quantity}'},
+                        {'error': f'Insufficient stock for {product.name}. Available: {product.stock_quantity} {product.get_unit_type_display()}'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
-                item_total = item_data['quantity'] * item_data['unit_price']
+                unit_price = Decimal(str(item_data['unit_price']))
+                item_total = quantity * unit_price
                 total_amount += item_total
                 
                 sale_items.append({
                     'product': product,
-                    'quantity': item_data['quantity'],
-                    'unit_price': item_data['unit_price']
+                    'quantity': quantity,
+                    'unit_price': unit_price,
+                    'requested_amount': Decimal(str(item_data.get('requested_amount', 0))) if item_data.get('requested_amount') else None
                 })
             
             # Create sale
@@ -102,7 +107,8 @@ class SaleViewSet(viewsets.ModelViewSet):
                     sale=sale,
                     product=item_data['product'],
                     quantity=item_data['quantity'],
-                    unit_price=item_data['unit_price']
+                    unit_price=item_data['unit_price'],
+                    requested_amount=item_data.get('requested_amount')
                 )
                 
                 # Update product stock
@@ -133,13 +139,15 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             # Calculate total cost
             for item_data in items_data:
                 product = Product.objects.get(id=item_data['product_id'])
-                item_total = item_data['quantity'] * item_data['unit_cost']
+                quantity = Decimal(str(item_data['quantity']))
+                unit_cost = Decimal(str(item_data['unit_cost']))
+                item_total = quantity * unit_cost
                 total_cost += item_total
                 
                 purchase_items.append({
                     'product': product,
-                    'quantity': item_data['quantity'],
-                    'unit_cost': item_data['unit_cost']
+                    'quantity': quantity,
+                    'unit_cost': unit_cost
                 })
             
             # Create purchase
@@ -160,7 +168,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 
                 # Update product stock and cost price
                 product = item_data['product']
-                product.stock_quantity += item_data['quantity']
+                product.stock_quantity = Decimal(str(product.stock_quantity)) + item_data['quantity']
                 product.cost_price = item_data['unit_cost']  # Update to latest cost
                 product.save()
             

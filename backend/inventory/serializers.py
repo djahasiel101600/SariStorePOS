@@ -5,6 +5,8 @@ from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem
 class ProductSerializer(serializers.ModelSerializer):
     needs_restock = serializers.ReadOnlyField()
     profit_margin = serializers.ReadOnlyField()
+    unit_type_display = serializers.CharField(source='get_unit_type_display', read_only=True)
+    pricing_model_display = serializers.CharField(source='get_pricing_model_display', read_only=True)
     
     class Meta:
         model = Product
