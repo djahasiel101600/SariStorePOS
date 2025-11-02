@@ -24,6 +24,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  BadgeRussianRuble,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ const Inventory: React.FC = () => {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [showQuickAddOptions, setShowQuickAddOptions] = useState(false);
   const [prefillData, setPrefillData] = useState<Partial<Product> | null>(null);
-  
+
   // State for search functionality
   const [searchMode, setSearchMode] = useState(false);
   const [searchTrigger, setSearchTrigger] = useState(0);
@@ -87,19 +88,27 @@ const Inventory: React.FC = () => {
     if (searchMode && searchQuery) {
       return allProducts;
     }
-    
+
     // Handle paginated response
-    if (productsResponse && typeof productsResponse === 'object' && 'results' in productsResponse) {
+    if (
+      productsResponse &&
+      typeof productsResponse === "object" &&
+      "results" in productsResponse
+    ) {
       return productsResponse.results;
     }
-    
+
     // Handle direct array response (fallback)
     return Array.isArray(productsResponse) ? productsResponse : [];
   }, [searchMode, searchQuery, allProducts, productsResponse]);
 
   // Extract pagination info
   const paginationInfo = useMemo(() => {
-    if (productsResponse && typeof productsResponse === 'object' && 'count' in productsResponse) {
+    if (
+      productsResponse &&
+      typeof productsResponse === "object" &&
+      "count" in productsResponse
+    ) {
       return {
         count: productsResponse.count,
         next: productsResponse.next,
@@ -107,9 +116,11 @@ const Inventory: React.FC = () => {
         totalPages: Math.ceil(productsResponse.count / pageSize),
       };
     }
-    
+
     // Fallback for non-paginated responses
-    const count = Array.isArray(productsResponse) ? productsResponse.length : productsDataSource.length;
+    const count = Array.isArray(productsResponse)
+      ? productsResponse.length
+      : productsDataSource.length;
     return {
       count,
       next: null,
@@ -119,8 +130,12 @@ const Inventory: React.FC = () => {
   }, [productsResponse, productsDataSource, pageSize]);
 
   // Safe data handling
-  const productsArray: Product[] = Array.isArray(productsDataSource) ? productsDataSource : [];
-  const lowStockArray: Product[] = Array.isArray(lowStockProducts) ? lowStockProducts : [];
+  const productsArray: Product[] = Array.isArray(productsDataSource)
+    ? productsDataSource
+    : [];
+  const lowStockArray: Product[] = Array.isArray(lowStockProducts)
+    ? lowStockProducts
+    : [];
 
   // Get unique categories safely
   const categories = [
@@ -179,7 +194,11 @@ const Inventory: React.FC = () => {
 
   // Check if we should show quick add options
   const shouldShowQuickAdd = useMemo(() => {
-    return searchQuery.trim().length > 0 && filteredProducts.length === 0 && !isFetchingAll;
+    return (
+      searchQuery.trim().length > 0 &&
+      filteredProducts.length === 0 &&
+      !isFetchingAll
+    );
   }, [searchQuery, filteredProducts.length, isFetchingAll]);
 
   // Count out of stock products safely
@@ -241,10 +260,10 @@ const Inventory: React.FC = () => {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
-    
+
     if (value.trim().length > 0) {
       setShowQuickAddOptions(true);
-      setSearchTrigger(prev => prev + 1); // Trigger search
+      setSearchTrigger((prev) => prev + 1); // Trigger search
     } else {
       setShowQuickAddOptions(false);
       setSearchMode(false);
@@ -304,7 +323,7 @@ const Inventory: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -322,7 +341,6 @@ const Inventory: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -338,7 +356,6 @@ const Inventory: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -356,23 +373,6 @@ const Inventory: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Worth (to do)</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {categories.length}
-                </p>
-              </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <Package className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -384,6 +384,25 @@ const Inventory: React.FC = () => {
               </div>
               <div className="p-3 bg-green-100 rounded-full">
                 <Package className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        {/* //ToDO */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Worth</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {allProducts
+                    .map((p) => p.price * p.stock_quantity)
+                    .reduce((a, b) => a + b, 0)
+                    .toFixed(2)}
+                </p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <BadgeRussianRuble className="h-6 w-6 text-green-600" />
               </div>
             </div>
           </CardContent>
@@ -403,14 +422,14 @@ const Inventory: React.FC = () => {
                 onBlur={handleSearchBlur}
                 className="pl-10"
               />
-              
+
               {/* Search status indicator */}
               {isFetchingAllProducts && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                 </div>
               )}
-              
+
               {searchMode && !isFetchingAllProducts && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                   <Badge variant="secondary" className="text-xs">
@@ -418,7 +437,7 @@ const Inventory: React.FC = () => {
                   </Badge>
                 </div>
               )}
-              
+
               {/* Quick Add Dropdown */}
               {showQuickAddOptions && shouldShowQuickAdd && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10">
@@ -426,7 +445,7 @@ const Inventory: React.FC = () => {
                     <div className="text-xs font-medium text-gray-500 px-2 py-1">
                       Quick Add Options
                     </div>
-                    
+
                     <button
                       onClick={() => handleQuickAdd(false)}
                       className="flex items-center gap-2 w-full p-2 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors"
@@ -434,13 +453,14 @@ const Inventory: React.FC = () => {
                       <Tag className="h-4 w-4 text-blue-600" />
                       <div className="flex-1">
                         <div className="font-medium text-sm">
-                          {isBarcodeSearch ? `Create product with name` : `Create product "${searchQuery}"`}
+                          {isBarcodeSearch
+                            ? `Create product with name`
+                            : `Create product "${searchQuery}"`}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {isBarcodeSearch 
+                          {isBarcodeSearch
                             ? `Name: ${searchQuery}`
-                            : "Pre-fills product name"
-                          }
+                            : "Pre-fills product name"}
                         </div>
                       </div>
                     </button>
@@ -523,15 +543,15 @@ const Inventory: React.FC = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>
-            Products ({searchMode ? filteredProducts.length : paginationInfo.count})
+            Products (
+            {searchMode ? filteredProducts.length : paginationInfo.count})
             {searchQuery && (
               <span className="text-sm font-normal text-gray-500 ml-2">
-                for "{searchQuery}"
-                {searchMode && " (searching all products)"}
+                for "{searchQuery}"{searchMode && " (searching all products)"}
               </span>
             )}
           </CardTitle>
-          
+
           {/* Pagination Controls - Only show when not searching */}
           {!searchMode && paginationInfo.totalPages > 1 && (
             <div className="flex items-center gap-2">
@@ -583,10 +603,10 @@ const Inventory: React.FC = () => {
                 <>
                   <p>No products found for "{searchQuery}"</p>
                   <p className="text-sm mt-2">
-                    Try a different search or{' '}
-                    <Button 
-                      variant="link" 
-                      className="p-0 h-auto" 
+                    Try a different search or{" "}
+                    <Button
+                      variant="link"
+                      className="p-0 h-auto"
                       onClick={() => handleQuickAdd(false)}
                     >
                       add it as a new product
@@ -596,7 +616,9 @@ const Inventory: React.FC = () => {
               ) : (
                 <>
                   <p>No products found</p>
-                  <p className="text-sm">Try adjusting your search or filters</p>
+                  <p className="text-sm">
+                    Try adjusting your search or filters
+                  </p>
                 </>
               )}
             </div>
