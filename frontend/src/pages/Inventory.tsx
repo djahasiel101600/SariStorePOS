@@ -80,6 +80,11 @@ const Inventory: React.FC = () => {
     isFetching: isFetchingAllProducts,
   } = useAllProducts();
 
+  useEffect(() => {
+  fetchAllProducts();
+}, [fetchAllProducts]);
+
+
   const { data: lowStockProducts } = useLowStockProducts();
   const deleteProduct = useDeleteProduct();
 
@@ -395,11 +400,14 @@ const Inventory: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Worth</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {allProducts
+                  ₱ {allProducts
                     .map((p) => p.price * p.stock_quantity)
                     .reduce((a, b) => a + b, 0)
-                    .toFixed(2)}
+                    .toLocaleString()}
                 </p>
+                <p className="text-xs text-gray-500 mt-1">
+              Based on {allProducts.length} products
+            </p>
               </div>
               <div className="p-3 bg-green-100 rounded-full">
                 <BadgeRussianRuble className="h-6 w-6 text-green-600" />
