@@ -1,7 +1,7 @@
 // src/pages/POS.tsx
-import React, { useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProductSearch, useCreateSale } from "@/hooks/api";
+import { useProductSearch, useCreateSale, useAllProducts } from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Product } from "@/types";
 import CustomerSearch from "@/components/pos/CustomerSearch";
 import PaymentMethodSelector from "@/components/pos/PaymentMethodSelector";
 import CashTender from "@/components/pos/CashTendered";
+import ScannerDialog from "@/components/pos/ScannerDialog";
 import {
   Search,
   Plus,
@@ -46,16 +47,28 @@ const POS: React.FC = () => {
     setPaymentMethod,
   } = usePOS();
 
-  // POS page relies on server-side search results; removed local pagination/search mode
+  // POS page relies on server-side search results; reintroduce dynamic categories for quick filtering
 
   const cartTotal = getCartTotal();
   const cartItemCount = getCartItemCount();
 
   const { data: searchResults, isLoading: searching } =
     useProductSearch(searchQuery);
+  const { data: allProducts = [] } = useAllProducts();
+  const categories = useMemo(() => {
+    const arr = Array.isArray(allProducts) ? allProducts : [];
+    return [
+      ...new Set(
+        arr
+          .map((p) => p.category)
+          .filter((c): c is string => Boolean(c))
+      ),
+    ];
+  }, [allProducts]);
   const createSaleMutation = useCreateSale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
 
   // Keyboard shortcuts
   useHotkeys("ctrl+k", (e) => {
@@ -73,6 +86,23 @@ const POS: React.FC = () => {
       searchInputRef.current?.blur();
     }
   });
+
+  // Auto-add to cart if a scan yields exactly 1 matching product
+  useEffect(() => {
+    if (!searchQuery) return;
+    if (!Array.isArray(searchResults)) return;
+    if (searchResults.length !== 1) return;
+    // Add single result and clear search
+    const product = searchResults[0];
+    const defaultQuantity = product.unit_type === 'piece' ? 1 : 0.1;
+    addToCart(product, defaultQuantity);
+    if (product.pricing_model === 'variable') {
+      toast.info(`Added ${product.name}. Set quantity/price in cart for variable pricing.`);
+    } else {
+      toast.success(`Added ${product.name} to cart`);
+    }
+    setSearchQuery("");
+  }, [searchQuery, searchResults]);
 
   const handleAddToCart = (product: Product) => {
     // For variable pricing, we might want to show a dialog for amount
@@ -151,8 +181,7 @@ const POS: React.FC = () => {
   };
 
   const handleBarcodeSearch = () => {
-    // Simulate barcode scanning - in real app, this would use device camera
-    toast.info("Barcode scanner would activate here");
+    setScannerOpen(true);
   };
 
   return (
@@ -181,6 +210,16 @@ const POS: React.FC = () => {
                   <Barcode className="h-4 w-4 mr-2" />
                       Scan
                   </Button>
+              <ScannerDialog
+                open={scannerOpen}
+                onOpenChange={setScannerOpen}
+                keepOpenAfterScan={true}
+                onScan={(text) => {
+                  setSearchQuery(text);
+                  // After scan, focus search to allow Enter-to-add behavior
+                  setTimeout(() => searchInputRef.current?.focus(), 0);
+                }}
+              />
               {/* Customer Search - Fixed width */}
               <div className="w-full lg:w-80">
                 <CustomerSearch />
@@ -188,7 +227,7 @@ const POS: React.FC = () => {
             </div>
 
             {/* Quick Stats */}
-            <div className="flex gap-4 mt-4 text-sm text-gray-600">
+            <div className="flex gap-4 mt-4 text-sm text-gray-600 flex-wrap items-center">
               <div className="flex items-center gap-1">
                 <ShoppingCart className="h-4 w-4" />
                 <span>{cartItemCount} items</span>
@@ -197,6 +236,14 @@ const POS: React.FC = () => {
                 <User className="h-4 w-4" />
                 <span>{customer?.name || "Walk-in Customer"}</span>
               </div>
+              {paymentMethod === 'utang' && customer && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-xs text-gray-500">Outstanding:</span>
+                  <span className="text-sm font-semibold text-amber-700">
+                    {formatCurrency(customer.outstanding_balance || 0)}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -209,6 +256,36 @@ const POS: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Quick Categories - always visible */}
+            {categories.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-medium text-gray-700 mr-2">Quick Categories:</h4>
+                {categories.map((category) => {
+                  const isActive = category.toLowerCase() === (searchQuery || '').toLowerCase();
+                  return (
+                    <Button
+                      key={category}
+                      variant={isActive ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSearchQuery(category)}
+                    >
+                      {category}
+                    </Button>
+                  );
+                })}
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-600"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
+
             {searching ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -261,8 +338,6 @@ const POS: React.FC = () => {
                 ))}
               </div>
             )}
-
-            {/* Quick Categories removed for simplicity in POS */}
           </CardContent>
         </Card>
       </div>
@@ -300,13 +375,13 @@ const POS: React.FC = () => {
                   {cart.map((item) => (
                     <div
                       key={item.product.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
+                      className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-3 border rounded-lg"
                     >
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-sm truncate">
                           {item.product.name}
                         </h4>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-green-600 font-semibold">
                             {formatCurrency(item.unitPrice)}/{item.product.unit_type}
                           </p>
@@ -317,7 +392,7 @@ const POS: React.FC = () => {
                           )}
                         </div>
                         {item.product.pricing_model === 'variable' && (
-                          <div className="mt-1 flex gap-2 items-center">
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <input
                               type="number"
                               min="0"
@@ -327,7 +402,7 @@ const POS: React.FC = () => {
                                 const val = parseFloat(e.target.value);
                                 updateUnitPrice(item.product.id, isNaN(val) ? 0 : val);
                               }}
-                              className="w-24 text-center font-medium border rounded px-2 py-1 text-sm"
+                              className="w-full sm:w-24 text-center font-medium border rounded px-2 py-1 text-sm"
                               disabled={isProcessing}
                             />
                             <span className="text-xs text-gray-500">Unit price</span>
@@ -341,7 +416,7 @@ const POS: React.FC = () => {
                                 updateRequestedAmount(item.product.id, isNaN(val) ? 0 : val);
                               }}
                               placeholder="₱ amount"
-                              className="w-28 text-center font-medium border rounded px-2 py-1 text-sm"
+                              className="w-full sm:w-28 text-center font-medium border rounded px-2 py-1 text-sm"
                               disabled={isProcessing}
                             />
                           </div>
@@ -351,7 +426,7 @@ const POS: React.FC = () => {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
                         <Button
                           variant="outline"
                           size="icon"
@@ -374,7 +449,7 @@ const POS: React.FC = () => {
                             const value = parseFloat(e.target.value) || 0.001;
                             updateQuantity(item.product.id, value);
                           }}
-                          className="w-16 text-center font-medium border rounded px-2 py-1 text-sm"
+                          className="w-24 md:w-16 text-center font-medium border rounded px-2 py-1 text-sm"
                           disabled={isProcessing}
                         />
 
@@ -419,7 +494,7 @@ const POS: React.FC = () => {
                 <PaymentMethodSelector />
 
                 {/* Cash Tender (only show for cash payments) */}
-                <CashTender />
+                {paymentMethod === 'cash' && <CashTender />}
 
                 {/* Total and Checkout Button */}
                 <div className="space-y-3">

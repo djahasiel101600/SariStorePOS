@@ -1,7 +1,7 @@
 // src/hooks/api.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Product, Sale, DashboardStats } from '@/types';
+import { Product, Sale, DashboardStats, type Payment } from '@/types';
 import type { Customer } from '@/types';
 
 // Dashboard
@@ -365,5 +365,33 @@ export const useDeleteCustomer = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
+  });
+};
+
+// Payments
+export const useRecordPayment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { customer: number; sale?: number | null; amount: number; method: 'cash' | 'card' | 'mobile'; notes?: string }) => {
+      const { data } = await api.post('/payments/', payload);
+      return data as Payment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'stats'] });
+    }
+  });
+};
+
+export const useCustomerById = (id?: number) => {
+  return useQuery({
+    queryKey: ['customers', id],
+    queryFn: async (): Promise<Customer | null> => {
+      if (!id) return null;
+      const { data } = await api.get(`/customers/${id}/`);
+      return data;
+    },
+    enabled: !!id,
   });
 };

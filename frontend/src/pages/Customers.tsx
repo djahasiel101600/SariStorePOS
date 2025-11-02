@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import RecordPaymentDialog from "@/components/customer/RecordPaymentDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +57,8 @@ const Customers: React.FC = () => {
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(
     null
   );
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   // Safe data handling
   const customersArray: Customer[] = Array.isArray(customers) ? customers : [];
@@ -345,8 +348,28 @@ const Customers: React.FC = () => {
                         </span>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs uppercase tracking-wide text-gray-500">Outstanding:</span>
+                        <span className="font-semibold text-amber-700">
+                          {formatCurrency((customer as any).outstanding_balance || 0)}
+                        </span>
+                      </div>
+
                       <div className="text-xs text-gray-500 mt-3">
                         Customer since {formatDate(customer.created_at)}
+                      </div>
+
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCustomerId(customer.id);
+                            setPaymentOpen(true);
+                          }}
+                        >
+                          Record Payment
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -363,6 +386,16 @@ const Customers: React.FC = () => {
         onOpenChange={handleFormClose}
         customer={editingCustomer}
       />
+
+      {/* Payment Dialog */}
+      {selectedCustomerId !== null && (
+        <RecordPaymentDialog
+          open={paymentOpen}
+          onOpenChange={setPaymentOpen}
+          customerId={selectedCustomerId}
+          onSuccess={() => refetchCustomers()}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

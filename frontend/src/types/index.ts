@@ -32,6 +32,8 @@ export interface Customer {
   phone: string;
   email: string;
   total_purchases: number;
+  outstanding_balance?: number;
+  last_utang_date?: string | null;
   created_at: string;
 }
 
@@ -50,6 +52,9 @@ export interface Sale {
   customer: number | null;
   customer_name: string;
   total_amount: number;
+  amount_paid?: number;
+  is_fully_paid?: boolean;
+  due_date?: string | null;
   payment_method: PaymentMethod;
   date_created: string;
   items: SaleItem[];
@@ -87,9 +92,27 @@ export interface CartItem {
   unitPrice: number;
 }
 
+export interface Payment {
+  id: number;
+  customer: number;
+  sale?: number | null;
+  amount: number;
+  method: 'cash' | 'card' | 'mobile';
+  notes?: string;
+  date_created: string;
+}
+
+export interface CustomerUtangSummary {
+  customer: Customer;
+  unpaid_sales: Sale[];
+  total_outstanding: number;
+}
+
 export interface CreateSaleData {
   customer: number | null;
   payment_method: string;
+  amount_paid?: number;
+  due_date?: string | null;
   items: Array<{
     product_id: number;
     quantity: number;
@@ -98,12 +121,4 @@ export interface CreateSaleData {
   }>;
 }
 
-// In src/types/index.ts
-export interface Customer {
-  id: number;
-  name: string;
-  phone: string;
-  email: string;
-  total_purchases: number;
-  created_at: string;
-}
+// Removed duplicate Customer interface
