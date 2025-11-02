@@ -388,7 +388,7 @@ const Inventory: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        {/* //ToDO */}
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
