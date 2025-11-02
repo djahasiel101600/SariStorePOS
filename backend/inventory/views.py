@@ -7,7 +7,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from decimal import Decimal
-from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem
+from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment
 from .serializers import *
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -97,6 +97,17 @@ class SaleViewSet(viewsets.ModelViewSet):
             # Create sale
             sale_data = request.data.copy()
             sale_data['total_amount'] = total_amount
+
+            # Handle utang-specific fields
+            payment_method = sale_data.get('payment_method', 'cash')
+            if payment_method == 'utang':
+                sale_data['amount_paid'] = Decimal('0')
+                sale_data['is_fully_paid'] = False
+            else:
+                # For non-utang, mark fully paid
+                sale_data['amount_paid'] = Decimal(str(total_amount))
+                sale_data['is_fully_paid'] = True
+
             serializer = self.get_serializer(data=sale_data)
             serializer.is_valid(raise_exception=True)
             sale = serializer.save()
@@ -114,8 +125,15 @@ class SaleViewSet(viewsets.ModelViewSet):
                 # Update product stock
                 item_data['product'].stock_quantity -= item_data['quantity']
                 item_data['product'].save()
+
+            # Update customer balances for utang
+            if payment_method == 'utang' and sale.customer:
+                customer = sale.customer
+                customer.outstanding_balance = (customer.outstanding_balance or 0) + Decimal(str(total_amount))
+                customer.last_utang_date = timezone.now()
+                customer.save(update_fields=['outstanding_balance', 'last_utang_date'])
             
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
             
         except Product.DoesNotExist:
             return Response({'error': 'Product not found'}, status=status.HTTP_400_BAD_REQUEST)
@@ -176,6 +194,35 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PaymentViewSet(viewsets.ModelViewSet):
+    queryset = Payment.objects.all().order_by('-date_created')
+    serializer_class = PaymentSerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+      try:
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
+
+        # Apply payment to customer balance and optional sale
+        customer = payment.customer
+        customer.outstanding_balance = (customer.outstanding_balance or 0) - payment.amount
+        if customer.outstanding_balance < 0:
+            customer.outstanding_balance = 0
+        customer.save(update_fields=['outstanding_balance'])
+
+        if payment.sale:
+            sale = payment.sale
+            sale.amount_paid = (sale.amount_paid or 0) + payment.amount
+            if sale.amount_paid >= sale.total_amount:
+                sale.is_fully_paid = True
+            sale.save(update_fields=['amount_paid', 'is_fully_paid'])
+
+        return Response(self.get_serializer(payment).data, status=status.HTTP_201_CREATED)
+      except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DashboardViewSet(viewsets.ViewSet):
     def stats(self, request):

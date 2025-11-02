@@ -1,6 +1,6 @@
 # serializers.py
 from rest_framework import serializers
-from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem
+from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment
 
 class ProductSerializer(serializers.ModelSerializer):
     needs_restock = serializers.ReadOnlyField()
@@ -15,6 +15,14 @@ class ProductSerializer(serializers.ModelSerializer):
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
+        fields = '__all__'
+
+class PaymentSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    sale_id = serializers.IntegerField(source='sale.id', read_only=True)
+
+    class Meta:
+        model = Payment
         fields = '__all__'
 
 class SaleItemSerializer(serializers.ModelSerializer):

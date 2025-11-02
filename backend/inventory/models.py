@@ -109,6 +109,9 @@ class Customer(models.Model):
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     total_purchases = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Utang tracking
+    outstanding_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    last_utang_date = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -120,6 +123,11 @@ class Customer(models.Model):
 class Sale(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    # Utang tracking on sale
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    is_fully_paid = models.BooleanField(default=True)
+    due_date = models.DateField(null=True, blank=True)
+
     date_created = models.DateTimeField(auto_now_add=True)
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
@@ -195,3 +203,20 @@ class PurchaseItem(models.Model):
 
     class Meta:
         db_table = 'purchase_items'
+
+# New model for recording payments against utang
+class Payment(models.Model):
+    PAYMENT_METHODS = [
+        ('cash', 'Cash'),
+        ('card', 'Card'),
+        ('mobile', 'Mobile Payment'),
+    ]
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='payments')
+    sale = models.ForeignKey(Sale, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
+    method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash')
+    notes = models.TextField(blank=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'payments'
