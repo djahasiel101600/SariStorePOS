@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Loader2, X, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Combobox } from "@/components/ui/combobox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -20,25 +21,37 @@ import {
 
 // Enhanced schema with better validation
 const productSchema = z.object({
-  name: z.string().min(1, "Product name is required").max(100, "Product name is too long"),
-  barcode: z.union([z.string().max(50, "Barcode is too long"), z.literal(''), z.null()])
-    .transform(val => (val === '' ? null : val)),
-    unit_type: z.enum(['piece', 'kg', 'g', 'liter', 'ml', 'bundle', 'pack']),
-    pricing_model: z.enum(['fixed_per_unit', 'fixed_per_weight', 'variable']),
-  price: z.union([
-    z.number().min(0.01, "Price must be at least ₱0.01").max(999999.99, "Price is too high"),
-    z.null(),
-    z.undefined()
-  ]).optional(),
-  cost_price: z.number()
+  name: z
+    .string()
+    .min(1, "Product name is required")
+    .max(100, "Product name is too long"),
+  barcode: z
+    .union([z.string().max(50, "Barcode is too long"), z.literal(""), z.null()])
+    .transform((val) => (val === "" ? null : val)),
+  unit_type: z.enum(["piece", "kg", "g", "liter", "ml", "bundle", "pack"]),
+  pricing_model: z.enum(["fixed_per_unit", "fixed_per_weight", "variable"]),
+  price: z
+    .union([
+      z
+        .number()
+        .min(0.01, "Price must be at least ₱0.01")
+        .max(999999.99, "Price is too high"),
+      z.null(),
+      z.undefined(),
+    ])
+    .optional(),
+  cost_price: z
+    .number()
     .min(0, "Cost price must be positive")
     .max(999999.99, "Cost price is too high")
     .nullable()
     .optional(),
-  stock_quantity: z.number()
+  stock_quantity: z
+    .number()
     .min(0, "Stock must be positive")
     .max(999999.999, "Stock quantity is too high"),
-  min_stock_level: z.number()
+  min_stock_level: z
+    .number()
     .min(0, "Minimum stock level must be positive")
     .max(9999.999, "Minimum stock level is too high"),
   category: z.string().max(50, "Category name is too long").optional(),
@@ -52,6 +65,7 @@ interface ProductFormProps {
   onOpenChange: (open: boolean) => void;
   product?: Product | null;
   prefillData?: Partial<Product> | null;
+  categories?: string[];
 }
 
 // Default form values
@@ -60,8 +74,8 @@ const defaultFormValues: Partial<ProductFormData> = {
   min_stock_level: 5,
   price: 0,
   cost_price: 0,
-  unit_type: 'piece',
-  pricing_model: 'fixed_per_unit',
+  unit_type: "piece",
+  pricing_model: "fixed_per_unit",
   is_active: true,
 };
 
@@ -70,6 +84,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
   onOpenChange,
   product,
   prefillData,
+  categories = [],
 }) => {
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -97,14 +112,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const costPrice = watch("cost_price") || 0;
   const pricingModel = watch("pricing_model");
   const unitType = watch("unit_type");
-  const profitMargin = price > 0 && costPrice >= 0 
-    ? ((price - costPrice) / price) * 100 
-    : 0;
+  const profitMargin =
+    price > 0 && costPrice >= 0 ? ((price - costPrice) / price) * 100 : 0;
 
   // Clean up object URLs
   useEffect(() => {
     return () => {
-      if (imagePreview.startsWith('blob:')) {
+      if (imagePreview.startsWith("blob:")) {
         URL.revokeObjectURL(imagePreview);
       }
     };
@@ -123,26 +137,26 @@ const ProductForm: React.FC<ProductFormProps> = ({
           cost_price: product.cost_price ?? null,
           stock_quantity: product.stock_quantity || 0,
           min_stock_level: product.min_stock_level || 5,
-          unit_type: product.unit_type || 'piece',
-          pricing_model: product.pricing_model || 'fixed_per_unit',
+          unit_type: product.unit_type || "piece",
+          pricing_model: product.pricing_model || "fixed_per_unit",
           is_active: product.is_active ?? true,
         });
         setImagePreview(product.image || "");
       } else if (prefillData) {
-          // Creating new product with prefill data
-          reset({
-            name: prefillData.name || "",
-            barcode: prefillData.barcode || "",
-            category: prefillData.category || "",
-            price: prefillData.price ?? null,
-            cost_price: prefillData.cost_price ?? null,
-            stock_quantity: prefillData.stock_quantity || 0,
-            min_stock_level: prefillData.min_stock_level || 5,
-            unit_type: prefillData.unit_type || 'piece',
-            pricing_model: prefillData.pricing_model || 'fixed_per_unit',
-            is_active: prefillData.is_active ?? true,
-          });
-          setImagePreview("");
+        // Creating new product with prefill data
+        reset({
+          name: prefillData.name || "",
+          barcode: prefillData.barcode || "",
+          category: prefillData.category || "",
+          price: prefillData.price ?? null,
+          cost_price: prefillData.cost_price ?? null,
+          stock_quantity: prefillData.stock_quantity || 0,
+          min_stock_level: prefillData.min_stock_level || 5,
+          unit_type: prefillData.unit_type || "piece",
+          pricing_model: prefillData.pricing_model || "fixed_per_unit",
+          is_active: prefillData.is_active ?? true,
+        });
+        setImagePreview("");
       } else {
         // Adding new product
         reset(defaultFormValues);
@@ -157,7 +171,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith("image/")) {
       toast.error("Please select a valid image file");
       return;
     }
@@ -169,7 +183,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
 
     // Clean up previous blob URL
-    if (imagePreview.startsWith('blob:')) {
+    if (imagePreview.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
 
@@ -179,45 +193,48 @@ const ProductForm: React.FC<ProductFormProps> = ({
   };
 
   const removeImage = useCallback(() => {
-    if (imagePreview.startsWith('blob:')) {
+    if (imagePreview.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
     setImage(null);
     setImagePreview("");
   }, [imagePreview]);
 
-  const prepareFormData = useCallback((data: ProductFormData): FormData => {
-    const formData = new FormData();
+  const prepareFormData = useCallback(
+    (data: ProductFormData): FormData => {
+      const formData = new FormData();
 
-    // Append form data with proper type handling
-    Object.entries(data).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        if (typeof value === 'boolean') {
-          formData.append(key, value.toString());
-        } else if (typeof value === 'number') {
-          formData.append(key, value.toString());
-        } else {
-          formData.append(key, value);
+      // Append form data with proper type handling
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          if (typeof value === "boolean") {
+            formData.append(key, value.toString());
+          } else if (typeof value === "number") {
+            formData.append(key, value.toString());
+          } else {
+            formData.append(key, value);
+          }
         }
+      });
+
+      // Append image if selected
+      if (image) {
+        formData.append("image", image);
       }
-    });
 
-    // Append image if selected
-    if (image) {
-      formData.append("image", image);
-    }
-
-    return formData;
-  }, [image]);
+      return formData;
+    },
+    [image]
+  );
 
   const onSubmit = async (data: ProductFormData) => {
     try {
       const formData = prepareFormData(data);
 
       if (isEditing && product) {
-        await updateProduct.mutateAsync({ 
-          id: product.id, 
-          data: formData 
+        await updateProduct.mutateAsync({
+          id: product.id,
+          data: formData,
         });
         toast.success("Product updated successfully");
       } else {
@@ -227,10 +244,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
       handleClose();
     } catch (error) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : `Failed to ${isEditing ? "update" : "create"} product`;
-      
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : `Failed to ${isEditing ? "update" : "create"} product`;
+
       toast.error(errorMessage);
     }
   };
@@ -336,12 +354,24 @@ const ProductForm: React.FC<ProductFormProps> = ({
             {/* Category */}
             <div>
               <Label htmlFor="category">Category</Label>
-              <Input
-                id="category"
-                {...register("category")}
-                placeholder="e.g., Snacks, Drinks"
-                disabled={isLoading}
-              />
+              {categories.length > 0 ? (
+                <Combobox
+                  options={categories}
+                  value={watch("category") || ""}
+                  onChange={(val) =>
+                    setValue("category", val, { shouldDirty: true })
+                  }
+                  placeholder="e.g., Snacks, Drinks"
+                  disabled={isLoading}
+                />
+              ) : (
+                <Input
+                  id="category"
+                  {...register("category")}
+                  placeholder="e.g., Snacks, Drinks"
+                  disabled={isLoading}
+                />
+              )}
               {errors.category && (
                 <p className="text-red-500 text-sm mt-1">
                   {errors.category.message}
@@ -383,15 +413,22 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="fixed_per_unit">Fixed Price Per Unit</option>
-                <option value="fixed_per_weight">Fixed Price Per Weight/Volume</option>
+                <option value="fixed_per_weight">
+                  Fixed Price Per Weight/Volume
+                </option>
                 <option value="variable">Variable Pricing</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                {pricingModel === 'variable' 
-                  ? 'Price determined at sale time'
-                  : pricingModel === 'fixed_per_weight'
-                  ? 'Price per ' + (unitType === 'kg' ? 'kilogram' : unitType === 'g' ? 'gram' : unitType)
-                  : 'Fixed price per unit'}
+                {pricingModel === "variable"
+                  ? "Price determined at sale time"
+                  : pricingModel === "fixed_per_weight"
+                    ? "Price per " +
+                      (unitType === "kg"
+                        ? "kilogram"
+                        : unitType === "g"
+                          ? "gram"
+                          : unitType)
+                    : "Fixed price per unit"}
               </p>
               {errors.pricing_model && (
                 <p className="text-red-500 text-sm mt-1">
@@ -403,20 +440,23 @@ const ProductForm: React.FC<ProductFormProps> = ({
             {/* Selling Price */}
             <div>
               <Label htmlFor="price">
-                {pricingModel === 'variable' ? 'Suggested Price (₱)' : 'Selling Price (₱)'} 
-                {pricingModel !== 'variable' && ' *'}
+                {pricingModel === "variable"
+                  ? "Suggested Price (₱)"
+                  : "Selling Price (₱)"}
+                {pricingModel !== "variable" && " *"}
               </Label>
               <Input
                 id="price"
                 type="number"
                 step="0.01"
                 min="0"
-                {...register("price", { 
+                {...register("price", {
                   valueAsNumber: true,
-                  setValueAs: (value) => value === "" ? null : parseFloat(value)
+                  setValueAs: (value) =>
+                    value === "" ? null : parseFloat(value),
                 })}
-                placeholder={pricingModel === 'variable' ? "Optional" : "0.00"}
-                disabled={isLoading || pricingModel === 'variable'}
+                placeholder={pricingModel === "variable" ? "Optional" : "0.00"}
+                disabled={isLoading || pricingModel === "variable"}
                 className={errors.price ? "border-red-500" : ""}
               />
               {errors.price && (
@@ -448,7 +488,9 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             {/* Current Stock */}
             <div>
-              <Label htmlFor="stock_quantity">Current Stock ({unitType}) *</Label>
+              <Label htmlFor="stock_quantity">
+                Current Stock ({unitType}) *
+              </Label>
               <Input
                 id="stock_quantity"
                 type="number"
@@ -468,7 +510,9 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             {/* Minimum Stock Level */}
             <div>
-              <Label htmlFor="min_stock_level">Low Stock Alert Level ({unitType}) *</Label>
+              <Label htmlFor="min_stock_level">
+                Low Stock Alert Level ({unitType}) *
+              </Label>
               <Input
                 id="min_stock_level"
                 type="number"
@@ -491,7 +535,9 @@ const ProductForm: React.FC<ProductFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Profit Information */}
             <div className="p-3 bg-blue-50 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Profit Information</h4>
+              <h4 className="font-medium text-blue-900 mb-2">
+                Profit Information
+              </h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span>Profit per Item:</span>
@@ -501,9 +547,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>Profit Margin:</span>
-                  <span className={`font-semibold ${
-                    profitMargin >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                  <span
+                    className={`font-semibold ${
+                      profitMargin >= 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
                     {profitMargin.toFixed(1)}%
                   </span>
                 </div>
@@ -517,7 +565,9 @@ const ProductForm: React.FC<ProductFormProps> = ({
                   Product Status
                 </Label>
                 <p className="text-sm text-gray-500">
-                  {watch("is_active") ? "Active and visible" : "Hidden from sales"}
+                  {watch("is_active")
+                    ? "Active and visible"
+                    : "Hidden from sales"}
                 </p>
               </div>
               <Switch
@@ -539,8 +589,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
             >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isLoading || (!isDirty && !image && isEditing)}
             >
               {isLoading ? (

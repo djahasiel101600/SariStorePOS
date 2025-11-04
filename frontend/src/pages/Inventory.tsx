@@ -1,4 +1,4 @@
-// /src/pages/Inventory.tsx 
+// /src/pages/Inventory.tsx
 import React, { useState, useMemo, useEffect } from "react";
 import {
   useProducts,
@@ -82,9 +82,8 @@ const Inventory: React.FC = () => {
   } = useAllProducts();
 
   useEffect(() => {
-  fetchAllProducts();
-}, [fetchAllProducts]);
-
+    fetchAllProducts();
+  }, [fetchAllProducts]);
 
   const { data: lowStockProducts } = useLowStockProducts();
   const deleteProduct = useDeleteProduct();
@@ -401,14 +400,17 @@ const Inventory: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Worth</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  ₱ {allProducts
-                    .map((p) => (p.price == null ? 0 : p.price) * p.stock_quantity)
+                  ₱{" "}
+                  {allProducts
+                    .map(
+                      (p) => (p.price == null ? 0 : p.price) * p.stock_quantity
+                    )
                     .reduce((a, b) => a + b, 0)
                     .toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-              Based on {allProducts.length} products
-            </p>
+                  Based on {allProducts.length} products
+                </p>
               </div>
               <div className="p-3 bg-green-100 rounded-full">
                 <BadgeRussianRuble className="h-6 w-6 text-green-600" />
@@ -673,10 +675,14 @@ const Inventory: React.FC = () => {
                       </td>
                       <td className="py-3 px-4">{product.category || "-"}</td>
                       <td className="py-3 px-4 font-semibold text-green-600">
-                        {formatCurrency(product.price == null ? 0 : product.price)}
+                        {formatCurrency(
+                          product.price == null ? 0 : product.price
+                        )}
                       </td>
                       <td className="py-3 px-4 text-gray-600">
-                        {formatCurrency(product.cost_price == null ? 0 : product.cost_price)}
+                        {formatCurrency(
+                          product.cost_price == null ? 0 : product.cost_price
+                        )}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -731,6 +737,7 @@ const Inventory: React.FC = () => {
         onOpenChange={handleFormClose}
         product={editingProduct}
         prefillData={prefillData}
+        categories={categories}
       />
 
       {/* Delete Confirmation Dialog */}
