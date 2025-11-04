@@ -7,6 +7,7 @@ export interface Product {
   product_quantity: string;
   product_quantity_unit: string;
   product_type: string;
+  image_front_small_url?: string; //changed to optional
 }
 
 // Define the interface for the API response
@@ -40,7 +41,7 @@ export const productApiService = {
         {
           params: {
             fields:
-              "product_name,product_quantity,product_quantity_unit,product_type",
+              "product_name,product_quantity,product_quantity_unit,product_type,product,image_front_small_url",
           },
         }
       );

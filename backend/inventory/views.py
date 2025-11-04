@@ -1,6 +1,6 @@
 # backend/inventory/views.py
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
@@ -9,6 +9,11 @@ from django.db import transaction
 from decimal import Decimal
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment
 from .serializers import *
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.utils.text import slugify
+import requests
+import os
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).order_by('name')
@@ -22,6 +27,35 @@ class ProductViewSet(viewsets.ModelViewSet):
         # Soft delete instead of actual delete
         instance.is_active = False
         instance.save()
+
+    def create(self, request, *args, **kwargs):
+        # Allow creation with an existing saved image path (downloaded previously)
+        existing_image_path = request.data.get('existing_image_path')
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+
+        if existing_image_path and not instance.image:
+            # Attach saved file path to image field
+            instance.image.name = existing_image_path
+            instance.save(update_fields=['image'])
+
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        existing_image_path = request.data.get('existing_image_path')
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+
+        if existing_image_path and not instance.image:
+            instance.image.name = existing_image_path
+            instance.save(update_fields=['image'])
+
+        return Response(self.get_serializer(instance).data)
     
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
@@ -284,3 +318,59 @@ class DashboardViewSet(viewsets.ViewSet):
             
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def download_image(request):
+    """Download an external image and save it to MEDIA_ROOT/products/.
+
+    Expects JSON body with 'url' and optional 'name'. Returns JSON with
+    'image_path' (relative storage path) and 'image_url' (public URL).
+    """
+    url = request.data.get('url') or request.data.get('image_url')
+    name = request.data.get('name') or request.data.get('product_name') or 'image'
+
+    if not url:
+        return Response({'error': 'url is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        resp = requests.get(url, timeout=15)
+        if resp.status_code != 200:
+            return Response({'error': f'Failed to fetch image: {resp.status_code}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = resp.headers.get('Content-Type', '')
+        if not content_type.startswith('image'):
+            return Response({'error': 'Provided URL is not an image'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Determine extension
+        ext = None
+        if 'jpeg' in content_type or 'jpg' in content_type:
+            ext = '.jpg'
+        elif 'png' in content_type:
+            ext = '.png'
+        elif 'webp' in content_type:
+            ext = '.webp'
+        elif 'gif' in content_type:
+            ext = '.gif'
+        else:
+            # Fallback: try to extract from URL
+            _, url_ext = os.path.splitext(url)
+            ext = url_ext if url_ext else '.jpg'
+
+        filename = f"{slugify(name) or 'image'}{ext}"
+        relative_path = f"products/{filename}"
+
+        # Ensure we don't overwrite existing file
+        storage_path = default_storage.get_available_name(relative_path)
+        saved_path = default_storage.save(storage_path, ContentFile(resp.content))
+        public_url = default_storage.url(saved_path)
+        # Ensure frontend gets an absolute URL (includes host) so it can load the image
+        try:
+            absolute_url = request.build_absolute_uri(public_url)
+        except Exception:
+            absolute_url = public_url
+
+        return Response({'image_path': saved_path, 'image_url': absolute_url}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

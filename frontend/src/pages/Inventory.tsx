@@ -160,7 +160,7 @@ const Inventory: React.FC = () => {
   // Get unique categories safely
   const categories = [
     ...new Set(
-      productsArray
+      allProducts
         .map((p) => p.category)
         .filter((category): category is string => Boolean(category))
     ),
@@ -319,6 +319,7 @@ const Inventory: React.FC = () => {
         // You can map additional fields as needed
         // For example, you might want to set category based on product_type
         category: productInfo.product_type || undefined,
+        image: productInfo.image_front_small_url || undefined,
       };
     }
 

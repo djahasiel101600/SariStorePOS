@@ -35,6 +35,7 @@ router.register(r'payments', views.PaymentViewSet, basename='payment')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('download-image/', views.download_image, name='download-image'),
     path('dashboard/stats/', views.DashboardViewSet.as_view({'get': 'stats'}), name='dashboard-stats'),
     
     # # These custom endpoints should work now

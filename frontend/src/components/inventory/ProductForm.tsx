@@ -94,6 +94,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const [imageSource, setImageSource] = useState<"blob" | "server" | "none">("none");
+  const [existingImagePath, setExistingImagePath] = useState<string | null>(null);
+  const [isDownloadingImage, setIsDownloadingImage] = useState<boolean>(false);
 
 
   const createProduct = useCreateProduct();
@@ -163,7 +165,58 @@ const ProductForm: React.FC<ProductFormProps> = ({
           pricing_model: prefillData.pricing_model || "fixed_per_unit",
           is_active: prefillData.is_active ?? true,
         });
-        setImagePreview(""); //newly added: the image comes from the internet which means it is a url address
+        setImagePreview(prefillData.image || ""); //newly added: the image comes from the internet which means it is a url address
+
+        // If prefillData includes a remote image URL (handle Open Food Facts shape), try to download it via backend
+        const anyPrefill = prefillData as any;
+        const remoteUrl = anyPrefill?.image
+        
+          console.log('Attempting to download remote image via backend:', prefillData.image);
+          if (remoteUrl && typeof remoteUrl === 'string') {
+          // set preview to remote url immediately
+          setImagePreview(remoteUrl);
+          setImageSource('server');
+
+          // Call backend to download and save image, only if not already processed
+          (async () => {
+            setIsDownloadingImage(true);
+            try {
+              // Determine good name for saved file (handle product_name from Open Food Facts)
+              const givenName = anyPrefill?.name || anyPrefill?.product_name || anyPrefill?.product?.product_name || anyPrefill?.product?.name || 'product';
+              const resp = await fetch('/api/download-image/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: remoteUrl, name: givenName }),
+              });
+
+              if (!resp.ok) {
+                // leave preview as remote URL; backend download may fail due to remote restrictions
+                const text = await resp.text();
+                console.warn('Backend image download failed', text);
+                toast.error('Failed to download image from remote service');
+                setIsDownloadingImage(false);
+                return;
+              }
+
+              const data = await resp.json();
+              if (data.image_url) {
+                // Use the public URL returned by storage for preview
+                setImagePreview(data.image_url);
+                setImageSource('server');
+                toast.success('Image downloaded and attached');
+              }
+              if (data.image_path) {
+                // Save relative storage path to include in form submission when no file is selected
+                setExistingImagePath(data.image_path);
+              }
+            } catch (err) {
+              console.warn('Failed to download remote image via backend', err);
+              toast.error('Error downloading image from remote service');
+            } finally {
+              setIsDownloadingImage(false);
+            }
+          })();
+        }
       } else {
         // Adding new product
         reset(defaultFormValues);
@@ -227,11 +280,15 @@ const ProductForm: React.FC<ProductFormProps> = ({
       // Append image if selected
       if (image) {
         formData.append("image", image);
+      } else if (existingImagePath) {
+        // If backend already downloaded the image, attach the saved path so server can link it
+  console.debug('Appending existing_image_path to FormData:', existingImagePath);
+        formData.append('existing_image_path', existingImagePath);
       }
 
       return formData;
     },
-    [image]
+  [image, existingImagePath]
   );
 
   const onSubmit = async (data: ProductFormData) => {
@@ -283,11 +340,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
             <Label htmlFor="image-upload">Product Image</Label>
             <div className="mt-2">
               {imagePreview ? (
-                <div className="relative inline-block">
+                <div className="relative inline-block w-32 h-32 sm:w-40 sm:h-40">
                   <img
                     src={imagePreview}
                     alt="Product preview"
-                    className="h-32 w-32 object-cover rounded-lg border"
+                    className="h-full w-full object-cover rounded-lg border"
                   />
                   <Button
                     type="button"
@@ -295,19 +352,30 @@ const ProductForm: React.FC<ProductFormProps> = ({
                     size="icon"
                     className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
                     onClick={removeImage}
-                    disabled={isLoading}
+                    disabled={isLoading || isDownloadingImage}
                   >
                     <X className="h-3 w-3" />
                   </Button>
+
+                  {isDownloadingImage && (
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
+                      <Loader2 className="h-6 w-6 animate-spin text-white" />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <label
                   htmlFor="image-upload"
-                  className="flex flex-col items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
+                  className="flex flex-col items-center justify-center w-32 h-32 sm:w-40 sm:h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
                 >
                   <Upload className="h-8 w-8 text-gray-400 mb-2" />
                   <span className="text-sm text-gray-500">Upload Image</span>
                 </label>
+              )}
+              {imageSource === 'server' && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Remote image detected. It will be downloaded to the server and attached when you save.
+                </p>
               )}
               <input
                 id="image-upload"
@@ -315,7 +383,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 accept="image/*"
                 onChange={handleImageChange}
                 className="hidden"
-                disabled={isLoading}
+                disabled={isLoading || isDownloadingImage}
               />
               <p className="text-xs text-gray-500 mt-1">
                 Supports JPG, PNG, WEBP. Max 5MB.
