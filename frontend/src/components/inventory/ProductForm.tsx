@@ -93,6 +93,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [showScanner, setShowScanner] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
+  const [imageSource, setImageSource] = useState<"blob" | "server" | "none">("none");
+
 
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -161,7 +163,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
           pricing_model: prefillData.pricing_model || "fixed_per_unit",
           is_active: prefillData.is_active ?? true,
         });
-        setImagePreview("");
+        setImagePreview(""); //newly added: the image comes from the internet which means it is a url address
       } else {
         // Adding new product
         reset(defaultFormValues);

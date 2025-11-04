@@ -30,6 +30,7 @@ import {
   Download,
   ExternalLink,
   Camera,
+  Check,
 } from "lucide-react"; // Added Download and ExternalLink icons
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -525,7 +526,7 @@ const Inventory: React.FC = () => {
                       className="text-xs bg-green-100 text-green-800"
                     >
                       <Download className="h-3 w-3 mr-1" />
-                      Data Available
+                      <Check />
                     </Badge>
                   )}
 
@@ -535,7 +536,7 @@ const Inventory: React.FC = () => {
 
                   {searchMode && !isFetchingAllProducts && (
                     <Badge variant="secondary" className="text-xs">
-                      Searching all products
+                      <Search />
                     </Badge>
                   )}
                 </div>
