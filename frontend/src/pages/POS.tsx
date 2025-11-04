@@ -66,7 +66,7 @@ const POS: React.FC = () => {
   const createSaleMutation = useCreateSale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [scannerOpen, setScannerOpen] = React.useState(false);
+  // const [scannerOpen, setScannerOpen] = React.useState(false);
   const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
 
   // Keyboard shortcuts
@@ -75,7 +75,7 @@ const POS: React.FC = () => {
     searchInputRef.current?.focus();
   });
 
-  useHotkeys("enter", (e) => {
+  useHotkeys("enter", () => {
     if (
       searchInputRef.current === document.activeElement &&
       searchResults?.[0]
@@ -194,11 +194,11 @@ const POS: React.FC = () => {
   };
 
   // Optional: Handle multiple scanned items at once
-  const handleMultipleScannedItems = (barcodes: string[]) => {
-    console.log("Multiple items scanned:", barcodes);
-    setScannedBarcodes(barcodes);
-    // You could process multiple items here if needed
-  };
+  // const handleMultipleScannedItems = (barcodes: string[]) => {
+  //   console.log("Multiple items scanned:", barcodes);
+  //   setScannedBarcodes(barcodes);
+  //   // You could process multiple items here if needed
+  // };
 
   return (
     <div className="h-full flex flex-col lg:flex-row gap-6">
