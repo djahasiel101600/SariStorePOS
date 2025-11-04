@@ -1,12 +1,15 @@
 // src/components/inventory/ProductForm.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Product } from "@/types";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/api";
 import { toast } from "sonner";
-import { Loader2, X, Upload } from "lucide-react";
+import { Loader2, X, Upload, Barcode } from "lucide-react";
+// Lazy load ScannerDialog for client-side only
+const ScannerDialog = React.lazy(() => import("../pos/ScannerDialog"));
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
@@ -86,6 +89,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
   prefillData,
   categories = [],
 }) => {
+  // State for scanner dialog
+  const [showScanner, setShowScanner] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
@@ -334,23 +339,48 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Barcode */}
             <div>
               <Label htmlFor="barcode">Barcode</Label>
-              <Input
-                id="barcode"
-                {...register("barcode")}
-                placeholder="Optional barcode"
-                disabled={isLoading}
-              />
+              <div className="flex gap-2 items-center">
+                <Input
+                  id="barcode"
+                  {...register("barcode")}
+                  placeholder="Optional barcode"
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={isLoading}
+                  onClick={() => setShowScanner(true)}
+                  title="Scan barcode"
+                >
+                  <Barcode className="h-5 w-5" />
+                </Button>
+              </div>
               {errors.barcode && (
                 <p className="text-red-500 text-sm mt-1">
                   {errors.barcode.message}
                 </p>
               )}
+              {/* Scanner Dialog */}
+              {typeof window !== "undefined" && showScanner && (
+                <Suspense fallback={<div>Loading scanner...</div>}>
+                  <ScannerDialog
+                    openOnMount
+                    onScan={(result: string) => {
+                      setValue("barcode", result, { shouldDirty: true });
+                      setShowScanner(false);
+                    }}
+                    autoCloseAfterScan
+                    trigger={null}
+                  />
+                </Suspense>
+              )}
             </div>
-
             {/* Category */}
             <div>
               <Label htmlFor="category">Category</Label>
@@ -378,7 +408,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Unit Type */}
             <div>
               <Label htmlFor="unit_type">Unit Type *</Label>
@@ -402,7 +431,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Pricing Model */}
             <div>
               <Label htmlFor="pricing_model">Pricing Model *</Label>
@@ -436,7 +464,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Selling Price */}
             <div>
               <Label htmlFor="price">
@@ -465,7 +492,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Cost Price */}
             <div>
               <Label htmlFor="cost_price">Cost Price (₱) *</Label>
@@ -485,7 +511,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Current Stock */}
             <div>
               <Label htmlFor="stock_quantity">
@@ -507,7 +532,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </p>
               )}
             </div>
-
             {/* Minimum Stock Level */}
             <div>
               <Label htmlFor="min_stock_level">

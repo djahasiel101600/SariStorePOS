@@ -30,6 +30,8 @@ interface ScannerDialogProps {
   trigger?: React.ReactNode;
   onScannedItems?: (items: string[]) => void;
   autoCloseAfterScan?: boolean;
+  /** If true, open the dialog as soon as the component mounts */
+  openOnMount?: boolean;
 }
 
 interface ScanResult {
@@ -42,6 +44,7 @@ export function ScannerDialog({
   trigger,
   onScannedItems,
   autoCloseAfterScan = false,
+  openOnMount = false,
 }: ScannerDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -600,6 +603,12 @@ export function ScannerDialog({
       }
     };
   }, []);
+
+  // Optionally open dialog on mount (useful when the parent mounts the component
+  // to show scanner immediately, e.g. from a product form)
+  useEffect(() => {
+    if (openOnMount) setIsOpen(true);
+  }, [openOnMount]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
