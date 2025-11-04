@@ -1,11 +1,12 @@
 // /src/pages/Inventory.tsx
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   useProducts,
   useLowStockProducts,
   useDeleteProduct,
   useAllProducts,
 } from "@/hooks/api";
+import { useProductApi } from "@/hooks/useProductApi";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -26,7 +27,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   BadgeRussianRuble,
-} from "lucide-react";
+  Download,
+  ExternalLink,
+  Camera,
+} from "lucide-react"; // Added Download and ExternalLink icons
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +52,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import ProductForm from "@/components/inventory/ProductForm";
+import ScannerDialog from "@/components/pos/ScannerDialog"; // Add ScannerDialog import
 
 const Inventory: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,6 +69,15 @@ const Inventory: React.FC = () => {
   // State for search functionality
   const [searchMode, setSearchMode] = useState(false);
   const [searchTrigger, setSearchTrigger] = useState(0);
+
+  // Barcode API hook
+  const {
+    productData: barcodeProductData,
+    loading: barcodeLoading,
+    error: barcodeError,
+    fetchProduct: fetchBarcodeProduct,
+    clearProduct: clearBarcodeProduct,
+  } = useProductApi();
 
   // Fetch paginated products
   const {
@@ -178,6 +192,7 @@ const Inventory: React.FC = () => {
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
       setSearchMode(false);
+      clearBarcodeProduct();
       return;
     }
 
@@ -186,6 +201,11 @@ const Inventory: React.FC = () => {
       const timer = setTimeout(() => {
         setSearchMode(true);
         fetchAllProducts();
+
+        // Auto-fetch barcode data if it looks like a barcode and no products found
+        if (isBarcodeSearch && filteredProducts.length === 0) {
+          handleBarcodeLookup();
+        }
       }, 500); // 500ms debounce
 
       return () => clearTimeout(timer);
@@ -205,6 +225,48 @@ const Inventory: React.FC = () => {
       !isFetchingAll
     );
   }, [searchQuery, filteredProducts.length, isFetchingAll]);
+
+  // Check if we have barcode data available
+  const hasBarcodeData = useMemo(() => {
+    return !barcodeLoading && !barcodeError && barcodeProductData !== null;
+  }, [barcodeLoading, barcodeError, barcodeProductData]);
+
+  // Handle barcode scan from scanner
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      console.log("Scanned barcode:", barcode);
+
+      // Set the search query to the scanned barcode
+      setSearchQuery(barcode);
+
+      // Trigger search and barcode lookup
+      setSearchMode(true);
+      setSearchTrigger((prev) => prev + 1);
+
+      // Show quick add options
+      setShowQuickAddOptions(true);
+
+      // Fetch barcode data from external API
+      fetchBarcodeProduct(barcode).catch((error) => {
+        console.log("Barcode API lookup failed:", error);
+      });
+
+      toast.success(`Scanned: ${barcode}`);
+    },
+    [fetchBarcodeProduct]
+  );
+
+  // Handle barcode lookup
+  const handleBarcodeLookup = async () => {
+    if (!isBarcodeSearch) return;
+
+    try {
+      await fetchBarcodeProduct(searchQuery);
+    } catch (error) {
+      // Error is handled by the hook
+      console.log("Barcode lookup failed:", error);
+    }
+  };
 
   // Count out of stock products safely
   const outOfStockCount = productsArray.filter(
@@ -236,10 +298,10 @@ const Inventory: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleQuickAdd = (prefillBarcode: boolean = false) => {
-    const newPrefillData: Partial<Product> = {
-      name: prefillBarcode && isBarcodeSearch ? "" : searchQuery,
-      barcode: prefillBarcode || isBarcodeSearch ? searchQuery : "",
+  const handleQuickAdd = (useBarcodeData: boolean = false) => {
+    let newPrefillData: Partial<Product> = {
+      name: searchQuery,
+      barcode: isBarcodeSearch ? searchQuery : "",
       price: 0,
       cost_price: 0,
       stock_quantity: 0,
@@ -247,12 +309,25 @@ const Inventory: React.FC = () => {
       is_active: true,
     };
 
+    // Use barcode API data if available and requested
+    if (useBarcodeData && hasBarcodeData && barcodeProductData) {
+      const productInfo = barcodeProductData.product;
+      newPrefillData = {
+        ...newPrefillData,
+        name: productInfo.product_name || searchQuery,
+        // You can map additional fields as needed
+        // For example, you might want to set category based on product_type
+        category: productInfo.product_type || undefined,
+      };
+    }
+
     setPrefillData(newPrefillData);
     setEditingProduct(null);
     setIsFormOpen(true);
     setSearchQuery("");
     setShowQuickAddOptions(false);
     setSearchMode(false);
+    clearBarcodeProduct(); // Clear barcode data after use
   };
 
   const handleFormClose = () => {
@@ -272,6 +347,7 @@ const Inventory: React.FC = () => {
     } else {
       setShowQuickAddOptions(false);
       setSearchMode(false);
+      clearBarcodeProduct();
     }
   };
 
@@ -283,11 +359,13 @@ const Inventory: React.FC = () => {
     setCurrentPage(newPage);
     setSearchMode(false);
     setSearchQuery("");
+    clearBarcodeProduct();
   };
 
   // Clear search mode when filters change
   useEffect(() => {
     setSearchMode(false);
+    clearBarcodeProduct();
   }, [categoryFilter, stockFilter]);
 
   if (isLoading) {
@@ -424,77 +502,178 @@ const Inventory: React.FC = () => {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search products by name or barcode..."
-                value={searchQuery}
-                onChange={handleSearchChange}
-                onBlur={handleSearchBlur}
-                className="pl-10"
-              />
+            <div className="flex-1 flex gap-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search products by name or barcode..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onBlur={handleSearchBlur}
+                  className="pl-10 text-base sm:text-sm" // Larger text on mobile
+                />
 
-              {/* Search status indicator */}
-              {isFetchingAllProducts && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                {/* Search status indicators */}
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                  {barcodeLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  )}
+
+                  {hasBarcodeData && (
+                    <Badge
+                      variant="default"
+                      className="text-xs bg-green-100 text-green-800"
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Data Available
+                    </Badge>
+                  )}
+
+                  {isFetchingAllProducts && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  )}
+
+                  {searchMode && !isFetchingAllProducts && (
+                    <Badge variant="secondary" className="text-xs">
+                      Searching all products
+                    </Badge>
+                  )}
                 </div>
-              )}
 
-              {searchMode && !isFetchingAllProducts && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <Badge variant="secondary" className="text-xs">
-                    Searching all products
-                  </Badge>
-                </div>
-              )}
+                {/* Quick Add Dropdown */}
+                {showQuickAddOptions && shouldShowQuickAdd && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                    <div className="p-2">
+                      <div className="text-xs font-medium text-gray-500 px-2 py-1">
+                        Quick Add Options
+                      </div>
 
-              {/* Quick Add Dropdown */}
-              {showQuickAddOptions && shouldShowQuickAdd && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-gray-500 px-2 py-1">
-                      Quick Add Options
+                      {/* Barcode API option - show when we have barcode data */}
+                      {hasBarcodeData && barcodeProductData && (
+                        <button
+                          onClick={() => handleQuickAdd(true)}
+                          className="flex items-center gap-2 w-full p-3 text-left hover:bg-green-50 rounded-md cursor-pointer transition-colors border border-green-200 mb-2 touch-manipulation"
+                          onTouchStart={(e) =>
+                            e.currentTarget.classList.add("bg-green-100")
+                          }
+                          onTouchEnd={(e) =>
+                            e.currentTarget.classList.remove("bg-green-100")
+                          }
+                        >
+                          <Download className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">
+                              Use product data from barcode
+                            </div>
+                            <div className="text-xs text-gray-500 truncate">
+                              Name: {barcodeProductData.product.product_name}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Quantity:{" "}
+                              {barcodeProductData.product.product_quantity}
+                              {barcodeProductData.product.product_quantity_unit}
+                            </div>
+                          </div>
+                          <ExternalLink className="h-3 w-3 text-green-600 flex-shrink-0" />
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleQuickAdd(false)}
+                        className="flex items-center gap-2 w-full p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
+                        onTouchStart={(e) =>
+                          e.currentTarget.classList.add("bg-gray-200")
+                        }
+                        onTouchEnd={(e) =>
+                          e.currentTarget.classList.remove("bg-gray-200")
+                        }
+                      >
+                        <Tag className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">
+                            {isBarcodeSearch
+                              ? `Create product with name`
+                              : `Create product "${searchQuery}"`}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {isBarcodeSearch
+                              ? `Name: ${searchQuery}`
+                              : "Pre-fills product name"}
+                          </div>
+                        </div>
+                      </button>
+
+                      {isBarcodeSearch && (
+                        <button
+                          onClick={() => handleQuickAdd(false)}
+                          className="flex items-center gap-2 w-full p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
+                          onTouchStart={(e) =>
+                            e.currentTarget.classList.add("bg-gray-200")
+                          }
+                          onTouchEnd={(e) =>
+                            e.currentTarget.classList.remove("bg-gray-200")
+                          }
+                        >
+                          <Barcode className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">
+                              Create product with barcode
+                            </div>
+                            <div className="text-xs text-gray-500 truncate">
+                              Sets barcode: {searchQuery}
+                            </div>
+                          </div>
+                        </button>
+                      )}
+
+                      {/* Barcode lookup option - show when we don't have data yet but it's a barcode */}
+                      {isBarcodeSearch &&
+                        !hasBarcodeData &&
+                        !barcodeLoading && (
+                          <button
+                            onClick={handleBarcodeLookup}
+                            className="flex items-center gap-2 w-full p-3 text-left hover:bg-blue-50 rounded-md cursor-pointer transition-colors border border-blue-200 touch-manipulation"
+                            onTouchStart={(e) =>
+                              e.currentTarget.classList.add("bg-blue-100")
+                            }
+                            onTouchEnd={(e) =>
+                              e.currentTarget.classList.remove("bg-blue-100")
+                            }
+                          >
+                            <ExternalLink className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                Look up product information
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">
+                                Fetch product details from barcode database
+                              </div>
+                            </div>
+                          </button>
+                        )}
                     </div>
-
-                    <button
-                      onClick={() => handleQuickAdd(false)}
-                      className="flex items-center gap-2 w-full p-2 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors"
-                    >
-                      <Tag className="h-4 w-4 text-blue-600" />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">
-                          {isBarcodeSearch
-                            ? `Create product with name`
-                            : `Create product "${searchQuery}"`}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {isBarcodeSearch
-                            ? `Name: ${searchQuery}`
-                            : "Pre-fills product name"}
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => handleQuickAdd(true)}
-                      className="flex items-center gap-2 w-full p-2 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors"
-                    >
-                      <Barcode className="h-4 w-4 text-green-600" />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">
-                          Create product with barcode
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Sets barcode: {searchQuery}
-                        </div>
-                      </div>
-                    </button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Scanner Dialog with mobile-optimized trigger */}
+              <ScannerDialog
+                onScan={handleBarcodeScan}
+                autoCloseAfterScan={true}
+                trigger={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="whitespace-nowrap text-base sm:text-sm py-2 sm:py-0"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Scan
+                  </Button>
+                }
+              />
             </div>
 
+            {/* Rest of your filter dropdowns remain the same */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -547,9 +726,20 @@ const Inventory: React.FC = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {/* Barcode API Status */}
+          {barcodeError && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+              <div className="flex items-center gap-2 text-red-700 text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                <span>Barcode lookup failed: {barcodeError}</span>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* Rest of your component remains the same... */}
       {/* Products Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -730,6 +920,9 @@ const Inventory: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Scanner Dialog */}
+      <ScannerDialog onScan={handleBarcodeScan} autoCloseAfterScan={true} />
 
       {/* Product Form Dialog */}
       <ProductForm

@@ -16,45 +16,6 @@ export const useDashboardStats = () => {
   });
 };
 
-
-// src/hooks/api.ts
-// export const useProducts = () => {
-//   return useQuery({
-//     queryKey: ['products'],
-//     queryFn: async (): Promise<Product[]> => {
-//       try {
-//         const { data } = await api.get('/products/');
-        
-        
-//         // Handle various response formats
-//         if (data && typeof data === 'object') {
-//           // Django REST Framework pagination
-//           if (data.results && Array.isArray(data.results)) {
-//             return data.results;
-//           }
-//           // Some APIs use 'data' key
-//           if (data.data && Array.isArray(data.data)) {
-//             return data.data;
-//           }
-//           // Direct array response
-//           if (Array.isArray(data)) {
-//             return data;
-//           }
-//           // If it's an object with count but no results, return empty
-//           if (data.count !== undefined) {
-//             return [];
-//           }
-//         }
-        
-//         return [];
-//       } catch (error) {
-//         console.error('Error fetching products:', error);
-//         return [];
-//       }
-//     },
-//   });
-// };
-
 // src/hooks/api.ts
 export const useProducts = (page?: number, pageSize?: number) => {
   return useQuery({
