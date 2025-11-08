@@ -108,11 +108,18 @@ const Inventory: React.FC = () => {
 
   // Determine data source based on mode
   const productsDataSource = useMemo(() => {
+    // Use allProducts when searching or when filters are applied (category/stock)
+    // This ensures filtering works across all products, not just the current page
     if (searchMode && searchQuery) {
       return allProducts;
     }
 
-    // Handle paginated response
+    // If category or stock filter is active (not "all"), use allProducts for filtering
+    if (categoryFilter !== "all" || stockFilter !== "all") {
+      return allProducts;
+    }
+
+    // Otherwise, use paginated response
     if (
       productsResponse &&
       typeof productsResponse === "object" &&
@@ -123,51 +130,12 @@ const Inventory: React.FC = () => {
 
     // Handle direct array response (fallback)
     return Array.isArray(productsResponse) ? productsResponse : [];
-  }, [searchMode, searchQuery, allProducts, productsResponse]);
+  }, [searchMode, searchQuery, allProducts, productsResponse, categoryFilter, stockFilter]);
 
-  // Extract pagination info
-  const paginationInfo = useMemo(() => {
-    if (
-      productsResponse &&
-      typeof productsResponse === "object" &&
-      "count" in productsResponse
-    ) {
-      return {
-        count: productsResponse.count,
-        next: productsResponse.next,
-        previous: productsResponse.previous,
-        totalPages: Math.ceil(productsResponse.count / pageSize),
-      };
-    }
-
-    // Fallback for non-paginated responses
-    const count = Array.isArray(productsResponse)
-      ? productsResponse.length
-      : productsDataSource.length;
-    return {
-      count,
-      next: null,
-      previous: null,
-      totalPages: Math.ceil(count / pageSize),
-    };
-  }, [productsResponse, productsDataSource, pageSize]);
-
-  // Safe data handling
+  // Safe data handling - must be defined before filteredProducts
   const productsArray: Product[] = Array.isArray(productsDataSource)
     ? productsDataSource
     : [];
-  const lowStockArray: Product[] = Array.isArray(lowStockProducts)
-    ? lowStockProducts
-    : [];
-
-  // Get unique categories safely
-  const categories = [
-    ...new Set(
-      allProducts
-        .map((p) => p.category)
-        .filter((category): category is string => Boolean(category))
-    ),
-  ];
 
   // Filter products based on search and filters
   const filteredProducts = useMemo(() => {
@@ -191,6 +159,74 @@ const Inventory: React.FC = () => {
       return matchesSearch && matchesCategory && matchesStock;
     });
   }, [productsArray, searchQuery, categoryFilter, stockFilter]);
+
+  // Extract pagination info (moved after filteredProducts to avoid reference error)
+  const paginationInfo = useMemo(() => {
+    // When using filters or search, calculate pagination from filtered results
+    const isFiltering = categoryFilter !== "all" || stockFilter !== "all" || (searchMode && searchQuery);
+    
+    if (isFiltering) {
+      // Use filtered products count for pagination
+      const filteredCount = filteredProducts.length;
+      return {
+        count: filteredCount,
+        next: null,
+        previous: null,
+        totalPages: Math.ceil(filteredCount / pageSize),
+      };
+    }
+
+    // Otherwise, use server-side pagination info
+    if (
+      productsResponse &&
+      typeof productsResponse === "object" &&
+      "count" in productsResponse
+    ) {
+      return {
+        count: productsResponse.count,
+        next: productsResponse.next,
+        previous: productsResponse.previous,
+        totalPages: Math.ceil(productsResponse.count / pageSize),
+      };
+    }
+
+    // Fallback for non-paginated responses
+    const count = Array.isArray(productsResponse)
+      ? productsResponse.length
+      : productsDataSource.length;
+    return {
+      count,
+      next: null,
+      previous: null,
+      totalPages: Math.ceil(count / pageSize),
+    };
+  }, [productsResponse, productsDataSource, pageSize, categoryFilter, stockFilter, searchMode, searchQuery, filteredProducts.length]);
+
+  // Paginate filtered products client-side when filters are active
+  const isFiltering = categoryFilter !== "all" || stockFilter !== "all" || (searchMode && searchQuery);
+  const displayedProducts = useMemo(() => {
+    if (isFiltering) {
+      // Client-side pagination for filtered results
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      return filteredProducts.slice(startIndex, endIndex);
+    }
+    // When not filtering, use filtered products as-is (already paginated from server)
+    return filteredProducts;
+  }, [filteredProducts, currentPage, pageSize, isFiltering]);
+
+  const lowStockArray: Product[] = Array.isArray(lowStockProducts)
+    ? lowStockProducts
+    : [];
+
+  // Get unique categories safely
+  const categories = [
+    ...new Set(
+      allProducts
+        .map((p) => p.category)
+        .filter((category): category is string => Boolean(category))
+    ),
+  ];
 
   // Handle search with debouncing
   useEffect(() => {
@@ -367,10 +403,11 @@ const Inventory: React.FC = () => {
     clearBarcodeProduct();
   };
 
-  // Clear search mode when filters change
+  // Clear search mode and reset to page 1 when filters change
   useEffect(() => {
     setSearchMode(false);
     clearBarcodeProduct();
+    setCurrentPage(1); // Reset to first page when filters change
   }, [categoryFilter, stockFilter]);
 
   if (isLoading) {
@@ -768,8 +805,8 @@ const Inventory: React.FC = () => {
             )}
           </CardTitle>
 
-          {/* Pagination Controls - Only show when not searching */}
-          {!searchMode && paginationInfo.totalPages > 1 && (
+          {/* Pagination Controls - Show when pagination is needed */}
+          {paginationInfo.totalPages > 1 && (
             <div className="flex items-center gap-2">
               <div className="text-sm text-gray-600">
                 Page {currentPage} of {paginationInfo.totalPages}
@@ -853,7 +890,7 @@ const Inventory: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProducts.map((product) => (
+                  {displayedProducts.map((product) => (
                     <tr key={product.id} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
