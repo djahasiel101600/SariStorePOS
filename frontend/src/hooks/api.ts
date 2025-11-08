@@ -234,6 +234,26 @@ export const useDeleteProduct = () => {
   });
 };
 
+// Bulk import products
+export const useBulkImportProducts = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (formData: FormData) => {
+      const { data } = await api.post("/bulk-import-products/", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+    },
+  });
+};
+
 // Purchase orders
 export const useCreatePurchase = () => {
   const queryClient = useQueryClient();

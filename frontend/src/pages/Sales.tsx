@@ -3,7 +3,18 @@ import React, { useState } from "react";
 import { useSales } from "@/hooks/api";
 import { Sale } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Calendar, Filter, Download, Eye, Loader2, Search } from "lucide-react";
+import {
+  Calendar,
+  Filter,
+  Download,
+  Eye,
+  Loader2,
+  Search,
+  CreditCard,
+  Wallet,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,18 +37,40 @@ const Sales: React.FC = () => {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all"); // For Utang: all, paid, unpaid
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
 
   const { data: sales, isLoading, error } = useSales(startDate, endDate);
 
-  // Filter sales by search query (sale ID or customer name)
+  // Filter sales by multiple criteria
   const filteredSales =
     sales?.filter((sale) => {
+      // Search filter
       const matchesSearch =
+        !searchQuery ||
         sale.id.toString().includes(searchQuery) ||
         sale.customer_name?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
+
+      // Payment method filter
+      const matchesPaymentMethod =
+        paymentMethodFilter === "all" ||
+        sale.payment_method === paymentMethodFilter;
+
+      // Payment status filter (for Utang sales)
+      let matchesPaymentStatus = true;
+      if (paymentMethodFilter === "utang" || paymentStatusFilter !== "all") {
+        if (paymentStatusFilter === "paid") {
+          matchesPaymentStatus = sale.is_fully_paid === true;
+        } else if (paymentStatusFilter === "unpaid") {
+          matchesPaymentStatus = sale.is_fully_paid === false;
+        } else if (paymentStatusFilter === "all") {
+          matchesPaymentStatus = true;
+        }
+      }
+
+      return matchesSearch && matchesPaymentMethod && matchesPaymentStatus;
     }) || [];
 
   // Calculate statistics
@@ -49,6 +82,23 @@ const Sales: React.FC = () => {
     ? totalSales / filteredSales.length
     : 0;
   const totalTransactions = filteredSales.length;
+
+  // Utang-specific statistics
+  const utangSales = filteredSales.filter(
+    (sale) => sale.payment_method === "utang"
+  );
+  const totalUtang = utangSales.reduce(
+    (sum, sale) => sum + Number(sale.total_amount),
+    0
+  );
+  const unpaidUtang = utangSales
+    .filter((sale) => !sale.is_fully_paid)
+    .reduce((sum, sale) => {
+      const outstanding =
+        Number(sale.total_amount) - (Number(sale.amount_paid) || 0);
+      return sum + outstanding;
+    }, 0);
+  const paidUtang = utangSales.filter((sale) => sale.is_fully_paid).length;
 
   const handleViewDetails = (sale: Sale) => {
     setSelectedSale(sale);
@@ -115,7 +165,7 @@ const Sales: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -167,64 +217,228 @@ const Sales: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <Card className={utangSales.length > 0 ? "border-amber-200" : ""}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Utang Sales</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {utangSales.length}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatCurrency(totalUtang)}
+                </p>
+                {utangSales.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {paidUtang} paid, {utangSales.length - paidUtang} unpaid
+                  </p>
+                )}
+              </div>
+              <div className="p-3 bg-amber-100 rounded-full">
+                <CreditCard className="h-6 w-6 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className={unpaidUtang > 0 ? "border-red-200" : ""}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Unpaid Utang
+                </p>
+                <p className="text-2xl font-bold text-red-600 mt-1">
+                  {formatCurrency(unpaidUtang)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {utangSales.filter((s) => !s.is_fully_paid).length} unpaid
+                </p>
+              </div>
+              <div className="p-3 bg-red-100 rounded-full">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search by sale ID or customer name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <div className="flex flex-col gap-4">
+            {/* First Row: Search and Date Filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search by sale ID or customer name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-32"
+                />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-32"
+                />
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Quick Date
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handleDateFilter(1)}>
+                    Today
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDateFilter(7)}>
+                    Last 7 Days
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDateFilter(30)}>
+                    Last 30 Days
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setStartDate("");
+                      setEndDate("");
+                    }}
+                  >
+                    All Time
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-32"
-              />
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-32"
-              />
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Quick Filters
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleDateFilter(1)}>
-                  Today
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDateFilter(7)}>
-                  Last 7 Days
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDateFilter(30)}>
-                  Last 30 Days
-                </DropdownMenuItem>
-                <DropdownMenuItem
+            {/* Second Row: Payment Method and Status Filters */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">
+                  Payment Method:
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={paymentMethodFilter === "all" ? "default" : "outline"}
+                  size="sm"
                   onClick={() => {
-                    setStartDate("");
-                    setEndDate("");
+                    setPaymentMethodFilter("all");
+                    setPaymentStatusFilter("all");
                   }}
                 >
-                  All Time
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  All
+                </Button>
+                <Button
+                  variant={paymentMethodFilter === "cash" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setPaymentMethodFilter("cash");
+                    setPaymentStatusFilter("all");
+                  }}
+                >
+                  <Wallet className="h-3 w-3 mr-1" />
+                  Cash
+                </Button>
+                <Button
+                  variant={paymentMethodFilter === "card" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setPaymentMethodFilter("card");
+                    setPaymentStatusFilter("all");
+                  }}
+                >
+                  <CreditCard className="h-3 w-3 mr-1" />
+                  Card
+                </Button>
+                <Button
+                  variant={paymentMethodFilter === "mobile" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setPaymentMethodFilter("mobile");
+                    setPaymentStatusFilter("all");
+                  }}
+                >
+                  <Wallet className="h-3 w-3 mr-1" />
+                  Mobile
+                </Button>
+                <Button
+                  variant={paymentMethodFilter === "utang" ? "default" : "outline"}
+                  size="sm"
+                  className={
+                    paymentMethodFilter === "utang"
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : ""
+                  }
+                  onClick={() => {
+                    setPaymentMethodFilter("utang");
+                    setPaymentStatusFilter("all");
+                  }}
+                >
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Utang/Debt
+                </Button>
+              </div>
+
+              {/* Payment Status Filter (only show for Utang) */}
+              {(paymentMethodFilter === "utang" ||
+                paymentStatusFilter !== "all") && (
+                <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                  <span className="text-sm font-medium text-gray-700">
+                    Status:
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={paymentStatusFilter === "all" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setPaymentStatusFilter("all")}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      variant={paymentStatusFilter === "paid" ? "default" : "outline"}
+                      size="sm"
+                      className={
+                        paymentStatusFilter === "paid"
+                          ? "bg-green-600 hover:bg-green-700"
+                          : ""
+                      }
+                      onClick={() => setPaymentStatusFilter("paid")}
+                    >
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Paid
+                    </Button>
+                    <Button
+                      variant={paymentStatusFilter === "unpaid" ? "default" : "outline"}
+                      size="sm"
+                      className={
+                        paymentStatusFilter === "unpaid"
+                          ? "bg-red-600 hover:bg-red-700"
+                          : ""
+                      }
+                      onClick={() => setPaymentStatusFilter("unpaid")}
+                    >
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Unpaid
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -265,12 +479,57 @@ const Sales: React.FC = () => {
                         {formatDate(sale.date_created)}
                       </td>
                       <td className="py-3 px-4">
-                        <Badge variant="outline" className="capitalize">
-                          {sale.payment_method}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge
+                            variant={
+                              sale.payment_method === "utang"
+                                ? "destructive"
+                                : "outline"
+                            }
+                            className="capitalize w-fit"
+                          >
+                            {sale.payment_method === "utang" ? (
+                              <>
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Utang
+                              </>
+                            ) : (
+                              sale.payment_method
+                            )}
+                          </Badge>
+                          {sale.payment_method === "utang" && (
+                            <div className="text-xs text-gray-500">
+                              {sale.is_fully_paid ? (
+                                <span className="text-green-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Paid
+                                </span>
+                              ) : (
+                                <span className="text-red-600 flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Unpaid:{" "}
+                                  {formatCurrency(
+                                    Number(sale.total_amount) -
+                                      (Number(sale.amount_paid) || 0)
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-green-600">
-                        {formatCurrency(sale.total_amount)}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-green-600">
+                            {formatCurrency(sale.total_amount)}
+                          </span>
+                          {sale.payment_method === "utang" &&
+                            !sale.is_fully_paid && (
+                              <span className="text-xs text-gray-500">
+                                Paid: {formatCurrency(sale.amount_paid || 0)}
+                              </span>
+                            )}
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <Button
@@ -312,7 +571,33 @@ const Sales: React.FC = () => {
                   <p className="text-sm font-medium text-gray-600">
                     Payment Method
                   </p>
-                  <p className="capitalize">{selectedSale.payment_method}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        selectedSale.payment_method === "utang"
+                          ? "destructive"
+                          : "outline"
+                      }
+                      className="capitalize"
+                    >
+                      {selectedSale.payment_method === "utang" ? (
+                        <>
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Utang
+                        </>
+                      ) : (
+                        selectedSale.payment_method
+                      )}
+                    </Badge>
+                    {selectedSale.payment_method === "utang" && (
+                      <Badge
+                        variant={selectedSale.is_fully_paid ? "default" : "destructive"}
+                        className="text-xs"
+                      >
+                        {selectedSale.is_fully_paid ? "Paid" : "Unpaid"}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-600">
@@ -321,6 +606,27 @@ const Sales: React.FC = () => {
                   <p className="font-semibold text-green-600">
                     {formatCurrency(selectedSale.total_amount)}
                   </p>
+                  {selectedSale.payment_method === "utang" && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-gray-500">
+                        Amount Paid: {formatCurrency(selectedSale.amount_paid || 0)}
+                      </p>
+                      {!selectedSale.is_fully_paid && (
+                        <p className="text-xs font-medium text-red-600">
+                          Outstanding:{" "}
+                          {formatCurrency(
+                            Number(selectedSale.total_amount) -
+                              (Number(selectedSale.amount_paid) || 0)
+                          )}
+                        </p>
+                      )}
+                      {selectedSale.due_date && (
+                        <p className="text-xs text-gray-500">
+                          Due Date: {formatDate(selectedSale.due_date)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -353,6 +659,74 @@ const Sales: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {/* Payment History - Show for Utang sales */}
+              {selectedSale.payment_method === "utang" && (
+                <div>
+                  <p className="text-sm font-medium text-gray-600 mb-2">
+                    Payment History
+                  </p>
+                  {selectedSale.payments && selectedSale.payments.length > 0 ? (
+                    <div className="border rounded-lg">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b bg-gray-50">
+                            <th className="text-left py-2 px-4">Date</th>
+                            <th className="text-left py-2 px-4">Amount</th>
+                            <th className="text-left py-2 px-4">Method</th>
+                            <th className="text-left py-2 px-4">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedSale.payments
+                            .sort(
+                              (a, b) =>
+                                new Date(b.date_created).getTime() -
+                                new Date(a.date_created).getTime()
+                            )
+                            .map((payment) => (
+                              <tr key={payment.id} className="border-b">
+                                <td className="py-2 px-4 text-sm">
+                                  {formatDate(payment.date_created)}
+                                </td>
+                                <td className="py-2 px-4 font-medium text-green-600">
+                                  {formatCurrency(payment.amount)}
+                                </td>
+                                <td className="py-2 px-4">
+                                  <Badge variant="outline" className="capitalize">
+                                    {payment.method}
+                                  </Badge>
+                                </td>
+                                <td className="py-2 px-4 text-sm text-gray-500">
+                                  {payment.notes || "-"}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 font-semibold">
+                            <td className="py-2 px-4" colSpan={3}>
+                              Total Paid:
+                            </td>
+                            <td className="py-2 px-4 text-green-600">
+                              {formatCurrency(
+                                selectedSale.payments.reduce(
+                                  (sum, p) => sum + p.amount,
+                                  0
+                                )
+                              )}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg p-4 text-center text-gray-500 text-sm">
+                      No payments recorded yet
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

@@ -58,6 +58,7 @@ export interface Sale {
   payment_method: PaymentMethod;
   date_created: string;
   items: SaleItem[];
+  payments?: Payment[];
 }
 
 export interface DashboardStats {

@@ -36,6 +36,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
+    payments = PaymentSerializer(many=True, read_only=True)
     
     class Meta:
         model = Sale

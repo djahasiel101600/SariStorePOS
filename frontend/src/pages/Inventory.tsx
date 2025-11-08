@@ -31,6 +31,7 @@ import {
   ExternalLink,
   Camera,
   Check,
+  Upload,
 } from "lucide-react"; // Added Download and ExternalLink icons
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import ProductForm from "@/components/inventory/ProductForm";
+import BulkImportDialog from "@/components/inventory/BulkImportDialog";
 import ScannerDialog from "@/components/pos/ScannerDialog"; // Add ScannerDialog import
 
 const Inventory: React.FC = () => {
@@ -66,6 +68,7 @@ const Inventory: React.FC = () => {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [showQuickAddOptions, setShowQuickAddOptions] = useState(false);
   const [prefillData, setPrefillData] = useState<Partial<Product> | null>(null);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   // State for search functionality
   const [searchMode, setSearchMode] = useState(false);
@@ -401,10 +404,20 @@ const Inventory: React.FC = () => {
             Manage your products and stock levels
           </p>
         </div>
-        <Button onClick={handleAddProduct} className="whitespace-nowrap">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Product
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsBulkImportOpen(true)}
+            className="whitespace-nowrap"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Import
+          </Button>
+          <Button onClick={handleAddProduct} className="whitespace-nowrap">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -933,6 +946,16 @@ const Inventory: React.FC = () => {
         product={editingProduct}
         prefillData={prefillData}
         categories={categories}
+      />
+
+      {/* Bulk Import Dialog */}
+      <BulkImportDialog
+        open={isBulkImportOpen}
+        onOpenChange={setIsBulkImportOpen}
+        onImportComplete={() => {
+          refetchProducts();
+          fetchAllProducts();
+        }}
       />
 
       {/* Delete Confirmation Dialog */}
