@@ -1,6 +1,7 @@
 # models.py
 from django.db import models
 from django.core.validators import MinValueValidator
+from decimal import Decimal, InvalidOperation
 
 # Unit Types for products
 UNIT_TYPES = [
@@ -200,9 +201,97 @@ class PurchaseItem(models.Model):
         validators=[MinValueValidator(0.001)]
     )
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    # The unit the supplier used when purchasing (piece or pack)
+    purchase_unit = models.CharField(max_length=20, choices=UNIT_TYPES, default='piece', help_text='Unit used for this purchase (pack or piece)')
+    # If purchased as pack, how many pieces are in one pack
+    units_per_pack = models.PositiveIntegerField(default=1, help_text='Number of sellable units inside a pack. Set to 1 for single-piece purchases')
+    # Selling price per piece that will be set/used for this product when added to inventory
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Optional: selling price per piece')
+    # Profit margin percent calculated at time of purchase (based on per-piece cost and selling_price)
+    profit_margin_percent = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    # Internal flag to avoid double-applying stock updates when save() is called multiple times
+    added_to_stock = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'purchase_items'
+
+    def save(self, *args, **kwargs):
+        """On save, convert purchased quantity/units to product's stock units and update product cost/price.
+
+        Behavior:
+        - If `purchase_unit` is 'pack' and `units_per_pack` > 1, the incoming `quantity` represents packs. We convert to pieces by quantity * units_per_pack.
+        - Compute per-piece cost = unit_cost / units_per_pack when purchase_unit is 'pack'.
+        - Update the linked Product:
+            - increase `stock_quantity` by converted pieces
+            - set `cost_price` to per-piece cost
+            - if `selling_price` provided, set `price` to selling_price (per piece)
+        - Calculate and store `profit_margin_percent` if selling_price provided and cost > 0.
+        - Use `added_to_stock` to prevent double-updating stock on subsequent saves.
+        """
+
+        # Determine per-piece quantity and per-piece cost
+        is_pack = (self.purchase_unit == 'pack' and self.units_per_pack and int(self.units_per_pack) > 1)
+        try:
+            units_per_pack = int(self.units_per_pack) if self.units_per_pack else 1
+        except Exception:
+            units_per_pack = 1
+
+        # Use Decimal for all arithmetic to avoid mixing float and Decimal
+        try:
+            qty_decimal = Decimal(str(self.quantity))
+        except (InvalidOperation, TypeError):
+            qty_decimal = Decimal('0')
+
+        try:
+            unit_cost_decimal = Decimal(str(self.unit_cost))
+        except (InvalidOperation, TypeError):
+            unit_cost_decimal = Decimal('0')
+
+        if is_pack:
+            pieces_added = qty_decimal * Decimal(units_per_pack)
+            try:
+                per_piece_cost = (unit_cost_decimal / Decimal(units_per_pack))
+            except (InvalidOperation, ZeroDivisionError):
+                per_piece_cost = unit_cost_decimal
+        else:
+            pieces_added = qty_decimal
+            per_piece_cost = unit_cost_decimal
+
+        # If not yet added to stock, update product stock and pricing
+        update_product = False
+        if not self.added_to_stock:
+            prod = self.product
+            # Ensure product.stock_quantity is Decimal
+            try:
+                current_stock = Decimal(str(prod.stock_quantity))
+            except (InvalidOperation, TypeError):
+                current_stock = Decimal('0')
+
+            prod.stock_quantity = current_stock + pieces_added
+            # Update cost_price to per-piece cost
+            prod.cost_price = per_piece_cost
+            # Optionally update selling price per piece
+            if self.selling_price is not None:
+                try:
+                    prod.price = Decimal(str(self.selling_price))
+                except (InvalidOperation, TypeError):
+                    prod.price = prod.price
+            prod.save()
+            self.added_to_stock = True
+            update_product = True
+
+        # Calculate profit margin percent if selling_price available and cost > 0
+        if self.selling_price is not None and per_piece_cost and Decimal(per_piece_cost) > 0:
+            try:
+                selling_decimal = Decimal(str(self.selling_price))
+                margin = (selling_decimal - per_piece_cost) / per_piece_cost * Decimal('100')
+                # store rounded to 2 decimal places
+                # Convert to float for storage in DecimalField if desired, but Decimal is fine
+                self.profit_margin_percent = margin.quantize(Decimal('0.01'))
+            except Exception:
+                self.profit_margin_percent = None
+
+        super(PurchaseItem, self).save(*args, **kwargs)
 
 # New model for recording payments against utang
 class Payment(models.Model):
