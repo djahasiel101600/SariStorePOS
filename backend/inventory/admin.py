@@ -1,5 +1,7 @@
 # backend/inventory/admin.py
 from django.contrib import admin
+from decimal import Decimal
+from django.db.models import Sum, F, ExpressionWrapper, DecimalField
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem
 
 @admin.register(Product)
@@ -30,5 +32,17 @@ class PurchaseItemInline(admin.TabularInline):
 
 @admin.register(Purchase)
 class PurchaseAdmin(admin.ModelAdmin):
-    list_display = ['id', 'supplier', 'total_cost', 'date_created']
+    list_display = ['id', 'supplier', 'total_cost', 'computed_total', 'date_created']
+    readonly_fields = ['computed_total']
     inlines = [PurchaseItemInline]
+
+    def computed_total(self, obj):
+        """Compute running total from purchase items: sum(unit_cost * quantity).
+        Uses Django ORM aggregation for efficiency."""
+        qs = PurchaseItem.objects.filter(purchase=obj).aggregate(
+            total=Sum(ExpressionWrapper(F('unit_cost') * F('quantity'), output_field=DecimalField()))
+        )
+        total = qs.get('total') or Decimal('0')
+        # Return Decimal; admin will format it
+        return total
+    computed_total.short_description = 'Computed Total (items)'
