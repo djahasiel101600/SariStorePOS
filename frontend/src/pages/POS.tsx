@@ -10,6 +10,8 @@ import CustomerSearch from "@/components/pos/CustomerSearch";
 import PaymentMethodSelector from "@/components/pos/PaymentMethodSelector";
 import CashTender from "@/components/pos/CashTendered";
 import ScannerDialog from "@/components/pos/ScannerDialog";
+import { MobileCartDrawer } from "@/components/pos/MobileCartDrawer";
+import { FloatingActionButton } from "@/components/pos/FloatingActionButton";
 import {
   Search,
   Plus,
@@ -39,22 +41,26 @@ const POS: React.FC = () => {
     clearCart,
     setSearchQuery,
     setProcessing,
-    getCartTotal, // Now a function
-    getCartItemCount, // Now a function
+    getCartTotal,
+    getCartItemCount,
     paymentMethod,
     cashTendered,
     setCashTendered,
     setPaymentMethod,
   } = usePOS();
 
-  // POS page relies on server-side search results; reintroduce dynamic categories for quick filtering
-
   const cartTotal = getCartTotal();
   const cartItemCount = getCartItemCount();
-
   const { data: searchResults, isLoading: searching } =
     useProductSearch(searchQuery);
   const { data: allProducts = [] } = useAllProducts();
+  const createSaleMutation = useCreateSale();
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
   const categories = useMemo(() => {
     const arr = Array.isArray(allProducts) ? allProducts : [];
     return [
@@ -63,13 +69,8 @@ const POS: React.FC = () => {
       ),
     ];
   }, [allProducts]);
-  const createSaleMutation = useCreateSale();
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  // const [scannerOpen, setScannerOpen] = React.useState(false);
-  const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
-
-  // Keyboard shortcuts
+  // Keyboard shortcuts (disabled on mobile)
   useHotkeys("ctrl+k", (e) => {
     e.preventDefault();
     searchInputRef.current?.focus();
@@ -80,9 +81,7 @@ const POS: React.FC = () => {
       searchInputRef.current === document.activeElement &&
       searchResults?.[0]
     ) {
-      addToCart(searchResults[0]);
-      setSearchQuery("");
-      searchInputRef.current?.blur();
+      handleAddToCart(searchResults[0]);
     }
   });
 
@@ -91,10 +90,11 @@ const POS: React.FC = () => {
     if (!searchQuery) return;
     if (!Array.isArray(searchResults)) return;
     if (searchResults.length !== 1) return;
-    // Add single result and clear search
+
     const product = searchResults[0];
     const defaultQuantity = product.unit_type === "piece" ? 1 : 0.1;
     addToCart(product, defaultQuantity);
+
     if (product.pricing_model === "variable") {
       toast.info(
         `Added ${product.name}. Set quantity/price in cart for variable pricing.`
@@ -106,8 +106,6 @@ const POS: React.FC = () => {
   }, [searchQuery, searchResults]);
 
   const handleAddToCart = (product: Product) => {
-    // For variable pricing, we might want to show a dialog for amount
-    // For now, just add with default quantity
     const defaultQuantity = product.unit_type === "piece" ? 1 : 0.1;
     addToCart(product, defaultQuantity);
 
@@ -121,15 +119,19 @@ const POS: React.FC = () => {
     setSearchQuery("");
   };
 
-  // In your POS.tsx - Use more robust type conversion
-  // In your POS.tsx - Update handleCheckout
+  const handleBarcodeSearch = (barcode: string) => {
+    console.log("Scanned barcode:", barcode);
+    setScannedBarcodes((prev) => [...prev, barcode]);
+    setSearchQuery(barcode);
+    setIsScannerOpen(false);
+  };
+
   const handleCheckout = async () => {
     if (cart.length === 0) {
       toast.error("Cart is empty");
       return;
     }
 
-    // Validation
     if (paymentMethod === "cash" && cashTendered < cartTotal) {
       toast.error("Insufficient cash amount");
       return;
@@ -144,7 +146,6 @@ const POS: React.FC = () => {
 
     try {
       const totalAmount = getCartTotal();
-
       const saleData = {
         customer: customer?.id || null,
         payment_method: paymentMethod,
@@ -159,7 +160,6 @@ const POS: React.FC = () => {
 
       await createSaleMutation.mutateAsync(saleData);
 
-      // Success message based on payment method
       if (paymentMethod === "utang") {
         toast.success(
           `Utang recorded for ${customer?.name}! Total: ${formatCurrency(totalAmount)}`
@@ -168,10 +168,10 @@ const POS: React.FC = () => {
         toast.success("Sale completed successfully!");
       }
 
-      // Clear cart and reset payment state
       clearCart();
       setCashTendered(0);
       setPaymentMethod("cash");
+      setIsCartOpen(false);
     } catch (error: any) {
       console.error("Checkout error details:", error.response?.data);
       toast.error(
@@ -182,55 +182,271 @@ const POS: React.FC = () => {
     }
   };
 
-  // Enhanced barcode handler for multiple items
-  const handleBarcodeSearch = (barcode: string) => {
-    console.log("Scanned barcode:", barcode);
+  // Cart Content Component (reusable for both desktop and mobile)
+  const CartContent = ({ isMobile = false }) => (
+    <div className={`flex flex-col ${isMobile ? "h-full" : ""}`}>
+      {/* Cart Items */}
+      <div className={`flex-1 ${isMobile ? "overflow-auto" : ""}`}>
+        {cart.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+            <p>Cart is empty</p>
+            <p className="text-sm">Search and add products to start</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {cart.map((item) => (
+              <div
+                key={item.product.id}
+                className="flex flex-col gap-3 p-4 border rounded-lg bg-white"
+              >
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-base truncate">
+                    {item.product.name}
+                  </h4>
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                    <p className="text-green-600 font-semibold">
+                      {formatCurrency(item.unitPrice)}/{item.product.unit_type}
+                    </p>
+                    {item.requestedAmount && (
+                      <span className="text-sm text-gray-500">
+                        (Requested: {formatCurrency(item.requestedAmount)})
+                      </span>
+                    )}
+                  </div>
 
-    // Add to local state for tracking
-    setScannedBarcodes((prev) => [...prev, barcode]);
+                  {item.product.pricing_model === "variable" && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600 min-w-20">
+                          Unit Price:
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={
+                            Number.isFinite(item.unitPrice) ? item.unitPrice : 0
+                          }
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            updateUnitPrice(
+                              item.product.id,
+                              isNaN(val) ? 0 : val
+                            );
+                          }}
+                          className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
+                          disabled={isProcessing}
+                          inputMode="decimal"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600 min-w-20">
+                          Amount:
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.requestedAmount ?? ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            updateRequestedAmount(
+                              item.product.id,
+                              isNaN(val) ? 0 : val
+                            );
+                          }}
+                          placeholder="₱ amount"
+                          className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
+                          disabled={isProcessing}
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </div>
+                  )}
 
-    // Set search query to trigger auto-add (existing behavior)
-    setSearchQuery(barcode);
-  };
+                  <p className="text-sm text-gray-500 mt-2">
+                    Total: {formatCurrency(item.unitPrice * item.quantity)}
+                  </p>
+                </div>
 
-  // Optional: Handle multiple scanned items at once
-  // const handleMultipleScannedItems = (barcodes: string[]) => {
-  //   console.log("Multiple items scanned:", barcodes);
-  //   setScannedBarcodes(barcodes);
-  //   // You could process multiple items here if needed
-  // };
+                {/* Quantity Controls - Larger touch targets */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10" // Larger touch target
+                      onClick={() => {
+                        const newQty = Math.max(
+                          0.001,
+                          item.quantity -
+                            (item.product.unit_type === "piece" ? 1 : 0.1)
+                        );
+                        updateQuantity(
+                          item.product.id,
+                          parseFloat(newQty.toFixed(3))
+                        );
+                      }}
+                      disabled={isProcessing}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+
+                    <input
+                      type="number"
+                      step={item.product.unit_type === "piece" ? "1" : "0.001"}
+                      min="0.001"
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 0.001;
+                        updateQuantity(item.product.id, value);
+                      }}
+                      className="w-20 text-center font-medium border rounded-lg px-2 py-2 text-base"
+                      disabled={isProcessing}
+                      inputMode="decimal"
+                    />
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10" // Larger touch target
+                      onClick={() => {
+                        const newQty =
+                          item.quantity +
+                          (item.product.unit_type === "piece" ? 1 : 0.1);
+                        if (newQty <= item.product.stock_quantity) {
+                          updateQuantity(
+                            item.product.id,
+                            parseFloat(newQty.toFixed(3))
+                          );
+                        }
+                      }}
+                      disabled={
+                        isProcessing ||
+                        item.quantity >= item.product.stock_quantity
+                      }
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 text-red-500 hover:text-red-700" // Larger touch target
+                    onClick={() => removeFromCart(item.product.id)}
+                    disabled={isProcessing}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Checkout Section */}
+      {cart.length > 0 && !isMobile && (
+        <div className="border-t pt-4 mt-4 space-y-4">
+          <PaymentMethodSelector />
+          {paymentMethod === "cash" && <CashTender />}
+
+          <div className="space-y-3">
+            <div className="flex justify-between text-lg font-semibold border-t pt-3">
+              <span>Total:</span>
+              <span className="text-green-600">
+                {formatCurrency(cartTotal)}
+              </span>
+            </div>
+
+            {paymentMethod === "cash" && cashTendered < cartTotal && (
+              <div className="text-red-500 text-sm text-center">
+                Please enter sufficient cash amount
+              </div>
+            )}
+
+            {paymentMethod === "utang" && customer === null && (
+              <div className="text-amber-600 text-sm text-center">
+                ⚠️ Please select a customer for utang transactions
+              </div>
+            )}
+
+            <Button
+              className="w-full h-12 text-lg"
+              onClick={handleCheckout}
+              disabled={
+                isProcessing ||
+                cart.length === 0 ||
+                (paymentMethod === "cash" && cashTendered < cartTotal) ||
+                (paymentMethod === "utang" && customer === null)
+              }
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : paymentMethod === "utang" ? (
+                `Record Utang - ${formatCurrency(cartTotal)}`
+              ) : (
+                `Checkout - ${formatCurrency(cartTotal)}`
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-6">
+    <div className="h-full flex flex-col lg:flex-row gap-6 pb-20 lg:pb-0">
+      {" "}
+      {/* Added padding for FAB */}
       {/* Left Panel - Products Search & Selection */}
       <div className="flex-1 flex flex-col">
         {/* Search Header */}
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div className="flex gap-3 flex-wrap">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-[18px] transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Search products by name or barcode (Ctrl+K)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4"
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search products (Ctrl+K)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 h-12 text-base" // Larger input
+                  />
+                </div>
+
+                <ScannerDialog
+                  onScan={handleBarcodeSearch}
+                  // open={isScannerOpen}
+                  // onOpenChange={setIsScannerOpen}
+                  trigger={
+                    <Button
+                      variant="outline"
+                      className="h-12 px-4" // Larger button
+                      size="lg"
+                    >
+                      <Barcode className="h-5 w-5 mr-2" />
+                      Scan
+                    </Button>
+                  }
                 />
               </div>
 
-              <ScannerDialog
-                onScan={handleBarcodeSearch}
-                trigger={
-                  <Button variant="outline" className="whitespace-nowrap">
-                    <Barcode className="h-4 w-4 mr-2" />
-                    Scan
-                  </Button>
-                }
-              />
-              {/* // Add this to track scanned items in your UI if desired */}
+              {/* Customer Search */}
+              <div className="w-full">
+                <CustomerSearch />
+              </div>
+
+              {/* Scanned Items */}
               {scannedBarcodes.length > 0 && (
-                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800">
                     Recently scanned: {scannedBarcodes.slice(-3).join(", ")}
                     {scannedBarcodes.length > 3 &&
@@ -238,19 +454,15 @@ const POS: React.FC = () => {
                   </div>
                 </div>
               )}
-              {/* Customer Search - Fixed width */}
-              <div className="w-full lg:w-80">
-                <CustomerSearch />
-              </div>
             </div>
 
             {/* Quick Stats */}
             <div className="flex gap-4 mt-4 text-sm text-gray-600 flex-wrap items-center">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <ShoppingCart className="h-4 w-4" />
                 <span>{cartItemCount} items</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <User className="h-4 w-4" />
                 <span>{customer?.name || "Walk-in Customer"}</span>
               </div>
@@ -268,64 +480,67 @@ const POS: React.FC = () => {
 
         {/* Search Results / Product Grid */}
         <Card className="flex-1">
-          <CardHeader>
-            <CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">
               {searchQuery ? "Search Results" : "Quick Products"}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Quick Categories - always visible */}
+            {/* Quick Categories */}
             {categories.length > 0 && (
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-medium text-gray-700 mr-2">
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">
                   Quick Categories:
                 </h4>
-                {categories.map((category) => {
-                  const isActive =
-                    category.toLowerCase() ===
-                    (searchQuery || "").toLowerCase();
-                  return (
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((category) => {
+                    const isActive =
+                      category.toLowerCase() ===
+                      (searchQuery || "").toLowerCase();
+                    return (
+                      <Button
+                        key={category}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSearchQuery(category)}
+                        className="h-9 px-3" // Larger touch target
+                      >
+                        {category}
+                      </Button>
+                    );
+                  })}
+                  {searchQuery && (
                     <Button
-                      key={category}
-                      variant={isActive ? "default" : "outline"}
+                      variant="ghost"
                       size="sm"
-                      onClick={() => setSearchQuery(category)}
+                      className="h-9 px-3 text-gray-600"
+                      onClick={() => setSearchQuery("")}
                     >
-                      {category}
+                      Clear
                     </Button>
-                  );
-                })}
-                {searchQuery && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-600"
-                    onClick={() => setSearchQuery("")}
-                  >
-                    Clear
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
             {searching ? (
               <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+                <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : searchQuery && searchResults?.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 No products found for "{searchQuery}"
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(searchResults || []).map((product) => (
                   <button
                     key={product.id}
                     onClick={() => handleAddToCart(product)}
-                    className="text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 active:bg-gray-100 min-h-[100px]" // Larger touch target
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-medium text-sm flex-1">
+                      <h3 className="font-medium text-base flex-1">
                         {product.name}
                       </h3>
                       {product.needs_restock && (
@@ -354,7 +569,7 @@ const POS: React.FC = () => {
                     </div>
 
                     {product.barcode && (
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-gray-400 mt-2">
                         📊 {product.barcode}
                       </div>
                     )}
@@ -365,12 +580,11 @@ const POS: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Right Panel - Cart & Checkout */}
-      <div className="w-full lg:w-96 flex flex-col">
+      {/* Desktop Cart Panel */}
+      <div className="hidden lg:flex w-96 flex-col">
         <Card className="flex-1">
           <CardHeader>
-            <CardTitle className="flex justify-between items-center">
+            <CardTitle className="flex justify-between items-center text-lg">
               Shopping Cart
               {cart.length > 0 && (
                 <Button
@@ -384,220 +598,71 @@ const POS: React.FC = () => {
               )}
             </CardTitle>
           </CardHeader>
-
           <CardContent className="flex flex-col h-[calc(100%-80px)]">
-            {/* Cart Items */}
-            <div className="flex-1 overflow-auto">
-              {cart.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>Cart is empty</p>
-                  <p className="text-sm">Search and add products to start</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {cart.map((item) => (
-                    <div
-                      key={item.product.id}
-                      className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-3 border rounded-lg"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">
-                          {item.product.name}
-                        </h4>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-green-600 font-semibold">
-                            {formatCurrency(item.unitPrice)}/
-                            {item.product.unit_type}
-                          </p>
-                          {item.requestedAmount && (
-                            <span className="text-xs text-gray-500">
-                              (Requested: {formatCurrency(item.requestedAmount)}
-                              )
-                            </span>
-                          )}
-                        </div>
-                        {item.product.pricing_model === "variable" && (
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={
-                                Number.isFinite(item.unitPrice)
-                                  ? item.unitPrice
-                                  : 0
-                              }
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                updateUnitPrice(
-                                  item.product.id,
-                                  isNaN(val) ? 0 : val
-                                );
-                              }}
-                              className="w-full sm:w-24 text-center font-medium border rounded px-2 py-1 text-sm"
-                              disabled={isProcessing}
-                            />
-                            <span className="text-xs text-gray-500">
-                              Unit price
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.requestedAmount ?? ""}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                updateRequestedAmount(
-                                  item.product.id,
-                                  isNaN(val) ? 0 : val
-                                );
-                              }}
-                              placeholder="₱ amount"
-                              className="w-full sm:w-28 text-center font-medium border rounded px-2 py-1 text-sm"
-                              disabled={isProcessing}
-                            />
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-500">
-                          Total:{" "}
-                          {formatCurrency(item.unitPrice * item.quantity)}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => {
-                            const newQty = Math.max(
-                              0.001,
-                              item.quantity -
-                                (item.product.unit_type === "piece" ? 1 : 0.1)
-                            );
-                            updateQuantity(
-                              item.product.id,
-                              parseFloat(newQty.toFixed(3))
-                            );
-                          }}
-                          disabled={isProcessing}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-
-                        <input
-                          type="number"
-                          step={
-                            item.product.unit_type === "piece" ? "1" : "0.001"
-                          }
-                          min="0.001"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value) || 0.001;
-                            updateQuantity(item.product.id, value);
-                          }}
-                          className="w-24 md:w-16 text-center font-medium border rounded px-2 py-1 text-sm"
-                          disabled={isProcessing}
-                        />
-
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => {
-                            const newQty =
-                              item.quantity +
-                              (item.product.unit_type === "piece" ? 1 : 0.1);
-                            if (newQty <= item.product.stock_quantity) {
-                              updateQuantity(
-                                item.product.id,
-                                parseFloat(newQty.toFixed(3))
-                              );
-                            }
-                          }}
-                          disabled={
-                            isProcessing ||
-                            item.quantity >= item.product.stock_quantity
-                          }
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700"
-                          onClick={() => removeFromCart(item.product.id)}
-                          disabled={isProcessing}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Checkout Section */}
-            {cart.length > 0 && (
-              <div className="border-t pt-4 mt-4 space-y-4">
-                {/* Payment Method */}
-                <PaymentMethodSelector />
-
-                {/* Cash Tender (only show for cash payments) */}
-                {paymentMethod === "cash" && <CashTender />}
-
-                {/* Total and Checkout Button */}
-                <div className="space-y-3">
-                  <div className="flex justify-between text-lg font-semibold border-t pt-3">
-                    <span>Total:</span>
-                    <span className="text-green-600">
-                      {formatCurrency(cartTotal)}
-                    </span>
-                  </div>
-
-                  {/* Validation Messages */}
-                  {paymentMethod === "cash" && cashTendered < cartTotal && (
-                    <div className="text-red-500 text-sm text-center">
-                      Please enter sufficient cash amount
-                    </div>
-                  )}
-
-                  {paymentMethod === "utang" && customer === null && (
-                    <div className="text-amber-600 text-sm text-center">
-                      ⚠️ Please select a customer for utang transactions
-                    </div>
-                  )}
-
-                  <Button
-                    className="w-full h-12 text-lg"
-                    onClick={handleCheckout}
-                    disabled={
-                      isProcessing ||
-                      cart.length === 0 ||
-                      (paymentMethod === "cash" && cashTendered < cartTotal) ||
-                      (paymentMethod === "utang" && customer === null)
-                    }
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Processing...
-                      </>
-                    ) : paymentMethod === "utang" ? (
-                      `Record Utang - ${formatCurrency(cartTotal)}`
-                    ) : (
-                      `Checkout - ${formatCurrency(cartTotal)}`
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <CartContent />
           </CardContent>
         </Card>
       </div>
+      {/* Mobile Cart Drawer */}
+      <MobileCartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cartItemCount={cartItemCount}
+        cartTotal={cartTotal}
+      >
+        <CartContent isMobile={true} />
+
+        {/* Mobile Checkout Section */}
+        {cart.length > 0 && (
+          <div className="border-t pt-4 mt-4 space-y-4">
+            <PaymentMethodSelector />
+            {paymentMethod === "cash" && <CashTender />}
+
+            <div className="space-y-3">
+              {paymentMethod === "cash" && cashTendered < cartTotal && (
+                <div className="text-red-500 text-sm text-center">
+                  Please enter sufficient cash amount
+                </div>
+              )}
+
+              {paymentMethod === "utang" && customer === null && (
+                <div className="text-amber-600 text-sm text-center">
+                  ⚠️ Please select a customer for utang transactions
+                </div>
+              )}
+
+              <Button
+                className="w-full h-14 text-base font-semibold"
+                onClick={handleCheckout}
+                disabled={
+                  isProcessing ||
+                  cart.length === 0 ||
+                  (paymentMethod === "cash" && cashTendered < cartTotal) ||
+                  (paymentMethod === "utang" && customer === null)
+                }
+                size="lg"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : paymentMethod === "utang" ? (
+                  `Record Utang - ${formatCurrency(cartTotal)}`
+                ) : (
+                  `Checkout - ${formatCurrency(cartTotal)}`
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </MobileCartDrawer>
+      {/* Floating Action Button */}
+      <FloatingActionButton
+        cartItemCount={cartItemCount}
+        onCartClick={() => setIsCartOpen(true)}
+        onScanClick={() => setIsScannerOpen(true)}
+      />
     </div>
   );
 };
