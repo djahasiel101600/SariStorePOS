@@ -7,9 +7,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency } from "@/lib/utils";
 
 interface MobileCartDrawerProps {
   isOpen: boolean;
@@ -23,7 +21,6 @@ export const MobileCartDrawer: React.FC<MobileCartDrawerProps> = ({
   isOpen,
   onClose,
   cartItemCount,
-  cartTotal,
   children,
 }) => {
   return (
