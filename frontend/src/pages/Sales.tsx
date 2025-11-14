@@ -334,7 +334,9 @@ const Sales: React.FC = () => {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant={paymentMethodFilter === "all" ? "default" : "outline"}
+                  variant={
+                    paymentMethodFilter === "all" ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => {
                     setPaymentMethodFilter("all");
@@ -344,7 +346,9 @@ const Sales: React.FC = () => {
                   All
                 </Button>
                 <Button
-                  variant={paymentMethodFilter === "cash" ? "default" : "outline"}
+                  variant={
+                    paymentMethodFilter === "cash" ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => {
                     setPaymentMethodFilter("cash");
@@ -355,7 +359,9 @@ const Sales: React.FC = () => {
                   Cash
                 </Button>
                 <Button
-                  variant={paymentMethodFilter === "card" ? "default" : "outline"}
+                  variant={
+                    paymentMethodFilter === "card" ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => {
                     setPaymentMethodFilter("card");
@@ -366,7 +372,9 @@ const Sales: React.FC = () => {
                   Card
                 </Button>
                 <Button
-                  variant={paymentMethodFilter === "mobile" ? "default" : "outline"}
+                  variant={
+                    paymentMethodFilter === "mobile" ? "default" : "outline"
+                  }
                   size="sm"
                   onClick={() => {
                     setPaymentMethodFilter("mobile");
@@ -377,7 +385,9 @@ const Sales: React.FC = () => {
                   Mobile
                 </Button>
                 <Button
-                  variant={paymentMethodFilter === "utang" ? "default" : "outline"}
+                  variant={
+                    paymentMethodFilter === "utang" ? "default" : "outline"
+                  }
                   size="sm"
                   className={
                     paymentMethodFilter === "utang"
@@ -403,14 +413,18 @@ const Sales: React.FC = () => {
                   </span>
                   <div className="flex gap-2">
                     <Button
-                      variant={paymentStatusFilter === "all" ? "default" : "outline"}
+                      variant={
+                        paymentStatusFilter === "all" ? "default" : "outline"
+                      }
                       size="sm"
                       onClick={() => setPaymentStatusFilter("all")}
                     >
                       All
                     </Button>
                     <Button
-                      variant={paymentStatusFilter === "paid" ? "default" : "outline"}
+                      variant={
+                        paymentStatusFilter === "paid" ? "default" : "outline"
+                      }
                       size="sm"
                       className={
                         paymentStatusFilter === "paid"
@@ -423,7 +437,9 @@ const Sales: React.FC = () => {
                       Paid
                     </Button>
                     <Button
-                      variant={paymentStatusFilter === "unpaid" ? "default" : "outline"}
+                      variant={
+                        paymentStatusFilter === "unpaid" ? "default" : "outline"
+                      }
                       size="sm"
                       className={
                         paymentStatusFilter === "unpaid"
@@ -591,7 +607,9 @@ const Sales: React.FC = () => {
                     </Badge>
                     {selectedSale.payment_method === "utang" && (
                       <Badge
-                        variant={selectedSale.is_fully_paid ? "default" : "destructive"}
+                        variant={
+                          selectedSale.is_fully_paid ? "default" : "destructive"
+                        }
                         className="text-xs"
                       >
                         {selectedSale.is_fully_paid ? "Paid" : "Unpaid"}
@@ -609,7 +627,8 @@ const Sales: React.FC = () => {
                   {selectedSale.payment_method === "utang" && (
                     <div className="mt-2 space-y-1">
                       <p className="text-xs text-gray-500">
-                        Amount Paid: {formatCurrency(selectedSale.amount_paid || 0)}
+                        Amount Paid:{" "}
+                        {formatCurrency(selectedSale.amount_paid || 0)}
                       </p>
                       {!selectedSale.is_fully_paid && (
                         <p className="text-xs font-medium text-red-600">
@@ -693,7 +712,10 @@ const Sales: React.FC = () => {
                                   {formatCurrency(payment.amount)}
                                 </td>
                                 <td className="py-2 px-4">
-                                  <Badge variant="outline" className="capitalize">
+                                  <Badge
+                                    variant="outline"
+                                    className="capitalize"
+                                  >
                                     {payment.method}
                                   </Badge>
                                 </td>
@@ -711,7 +733,7 @@ const Sales: React.FC = () => {
                             <td className="py-2 px-4 text-green-600">
                               {formatCurrency(
                                 selectedSale.payments.reduce(
-                                  (sum, p) => sum + p.amount,
+                                  (sum, p) => sum + Number(p.amount),
                                   0
                                 )
                               )}
