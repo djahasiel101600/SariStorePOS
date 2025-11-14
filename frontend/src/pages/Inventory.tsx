@@ -433,9 +433,9 @@ const Inventory: React.FC = () => {
 
   // Product Card Component
   const ProductCard = ({ product }: { product: Product }) => (
-    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white h-full flex flex-col">
+    <div className="border rounded-lg p-2 hover:shadow-md transition-shadow bg-white h-full flex flex-col">
       {/* Product Image and Basic Info */}
-      <div className="flex items-start gap-3 mb-3">
+      <div className="flex items-start gap-2 mb-3">
         {product.image ? (
           <img
             src={product.image}
@@ -495,12 +495,12 @@ const Inventory: React.FC = () => {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2 mt-auto">
+      <div className="flex flex-col gap-2 mt-auto">
         <Button
           variant="outline"
           size="sm"
           onClick={() => handleEdit(product)}
-          className="flex-1 h-8 text-xs"
+          className="h-8 px-2 text-xs"
         >
           <Edit className="h-3 w-3 mr-1" />
           Edit
@@ -512,6 +512,7 @@ const Inventory: React.FC = () => {
           className="h-8 px-2 text-red-600 hover:text-red-700"
         >
           <Trash2 className="h-3 w-3" />
+          Delete
         </Button>
       </div>
     </div>
