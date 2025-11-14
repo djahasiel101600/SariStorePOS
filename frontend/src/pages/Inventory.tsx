@@ -32,7 +32,9 @@ import {
   Camera,
   Check,
   Upload,
-} from "lucide-react"; // Added Download and ExternalLink icons
+  List,
+  Grid,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +57,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import ProductForm from "@/components/inventory/ProductForm";
 import BulkImportDialog from "@/components/inventory/BulkImportDialog";
-import ScannerDialog from "@/components/pos/ScannerDialog"; // Add ScannerDialog import
+import ScannerDialog from "@/components/pos/ScannerDialog";
+
+// View mode type
+type ViewMode = "list" | "card";
 
 const Inventory: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,6 +74,24 @@ const Inventory: React.FC = () => {
   const [showQuickAddOptions, setShowQuickAddOptions] = useState(false);
   const [prefillData, setPrefillData] = useState<Partial<Product> | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+
+  // View mode state with localStorage persistence
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("inventory-view-mode");
+      if (saved === "list" || saved === "card") {
+        return saved as ViewMode;
+      }
+      // Default to card view on mobile, list on desktop
+      return window.innerWidth < 768 ? "card" : "list";
+    }
+    return "list";
+  });
+
+  // Save view mode to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("inventory-view-mode", viewMode);
+  }, [viewMode]);
 
   // State for search functionality
   const [searchMode, setSearchMode] = useState(false);
@@ -108,18 +131,14 @@ const Inventory: React.FC = () => {
 
   // Determine data source based on mode
   const productsDataSource = useMemo(() => {
-    // Use allProducts when searching or when filters are applied (category/stock)
-    // This ensures filtering works across all products, not just the current page
     if (searchMode && searchQuery) {
       return allProducts;
     }
 
-    // If category or stock filter is active (not "all"), use allProducts for filtering
     if (categoryFilter !== "all" || stockFilter !== "all") {
       return allProducts;
     }
 
-    // Otherwise, use paginated response
     if (
       productsResponse &&
       typeof productsResponse === "object" &&
@@ -128,11 +147,17 @@ const Inventory: React.FC = () => {
       return productsResponse.results;
     }
 
-    // Handle direct array response (fallback)
     return Array.isArray(productsResponse) ? productsResponse : [];
-  }, [searchMode, searchQuery, allProducts, productsResponse, categoryFilter, stockFilter]);
+  }, [
+    searchMode,
+    searchQuery,
+    allProducts,
+    productsResponse,
+    categoryFilter,
+    stockFilter,
+  ]);
 
-  // Safe data handling - must be defined before filteredProducts
+  // Safe data handling
   const productsArray: Product[] = Array.isArray(productsDataSource)
     ? productsDataSource
     : [];
@@ -160,13 +185,14 @@ const Inventory: React.FC = () => {
     });
   }, [productsArray, searchQuery, categoryFilter, stockFilter]);
 
-  // Extract pagination info (moved after filteredProducts to avoid reference error)
+  // Extract pagination info
   const paginationInfo = useMemo(() => {
-    // When using filters or search, calculate pagination from filtered results
-    const isFiltering = categoryFilter !== "all" || stockFilter !== "all" || (searchMode && searchQuery);
-    
+    const isFiltering =
+      categoryFilter !== "all" ||
+      stockFilter !== "all" ||
+      (searchMode && searchQuery);
+
     if (isFiltering) {
-      // Use filtered products count for pagination
       const filteredCount = filteredProducts.length;
       return {
         count: filteredCount,
@@ -176,7 +202,6 @@ const Inventory: React.FC = () => {
       };
     }
 
-    // Otherwise, use server-side pagination info
     if (
       productsResponse &&
       typeof productsResponse === "object" &&
@@ -190,7 +215,6 @@ const Inventory: React.FC = () => {
       };
     }
 
-    // Fallback for non-paginated responses
     const count = Array.isArray(productsResponse)
       ? productsResponse.length
       : productsDataSource.length;
@@ -200,18 +224,28 @@ const Inventory: React.FC = () => {
       previous: null,
       totalPages: Math.ceil(count / pageSize),
     };
-  }, [productsResponse, productsDataSource, pageSize, categoryFilter, stockFilter, searchMode, searchQuery, filteredProducts.length]);
+  }, [
+    productsResponse,
+    productsDataSource,
+    pageSize,
+    categoryFilter,
+    stockFilter,
+    searchMode,
+    searchQuery,
+    filteredProducts.length,
+  ]);
 
   // Paginate filtered products client-side when filters are active
-  const isFiltering = categoryFilter !== "all" || stockFilter !== "all" || (searchMode && searchQuery);
+  const isFiltering =
+    categoryFilter !== "all" ||
+    stockFilter !== "all" ||
+    (searchMode && searchQuery);
   const displayedProducts = useMemo(() => {
     if (isFiltering) {
-      // Client-side pagination for filtered results
       const startIndex = (currentPage - 1) * pageSize;
       const endIndex = startIndex + pageSize;
       return filteredProducts.slice(startIndex, endIndex);
     }
-    // When not filtering, use filtered products as-is (already paginated from server)
     return filteredProducts;
   }, [filteredProducts, currentPage, pageSize, isFiltering]);
 
@@ -236,17 +270,15 @@ const Inventory: React.FC = () => {
       return;
     }
 
-    // Only trigger search for queries longer than 2 characters
     if (searchQuery.trim().length > 2) {
       const timer = setTimeout(() => {
         setSearchMode(true);
         fetchAllProducts();
 
-        // Auto-fetch barcode data if it looks like a barcode and no products found
         if (isBarcodeSearch && filteredProducts.length === 0) {
           handleBarcodeLookup();
         }
-      }, 500); // 500ms debounce
+      }, 500);
 
       return () => clearTimeout(timer);
     }
@@ -275,18 +307,11 @@ const Inventory: React.FC = () => {
   const handleBarcodeScan = useCallback(
     (barcode: string) => {
       console.log("Scanned barcode:", barcode);
-
-      // Set the search query to the scanned barcode
       setSearchQuery(barcode);
-
-      // Trigger search and barcode lookup
       setSearchMode(true);
       setSearchTrigger((prev) => prev + 1);
-
-      // Show quick add options
       setShowQuickAddOptions(true);
 
-      // Fetch barcode data from external API
       fetchBarcodeProduct(barcode).catch((error) => {
         console.log("Barcode API lookup failed:", error);
       });
@@ -303,7 +328,6 @@ const Inventory: React.FC = () => {
     try {
       await fetchBarcodeProduct(searchQuery);
     } catch (error) {
-      // Error is handled by the hook
       console.log("Barcode lookup failed:", error);
     }
   };
@@ -349,14 +373,11 @@ const Inventory: React.FC = () => {
       is_active: true,
     };
 
-    // Use barcode API data if available and requested
     if (useBarcodeData && hasBarcodeData && barcodeProductData) {
       const productInfo = barcodeProductData.product;
       newPrefillData = {
         ...newPrefillData,
         name: productInfo.product_name || searchQuery,
-        // You can map additional fields as needed
-        // For example, you might want to set category based on product_type
         category: productInfo.product_type || undefined,
         image: productInfo.image_front_small_url || undefined,
       };
@@ -368,7 +389,7 @@ const Inventory: React.FC = () => {
     setSearchQuery("");
     setShowQuickAddOptions(false);
     setSearchMode(false);
-    clearBarcodeProduct(); // Clear barcode data after use
+    clearBarcodeProduct();
   };
 
   const handleFormClose = () => {
@@ -384,7 +405,7 @@ const Inventory: React.FC = () => {
 
     if (value.trim().length > 0) {
       setShowQuickAddOptions(true);
-      setSearchTrigger((prev) => prev + 1); // Trigger search
+      setSearchTrigger((prev) => prev + 1);
     } else {
       setShowQuickAddOptions(false);
       setSearchMode(false);
@@ -407,8 +428,94 @@ const Inventory: React.FC = () => {
   useEffect(() => {
     setSearchMode(false);
     clearBarcodeProduct();
-    setCurrentPage(1); // Reset to first page when filters change
+    setCurrentPage(1);
   }, [categoryFilter, stockFilter]);
+
+  // Product Card Component
+  const ProductCard = ({ product }: { product: Product }) => (
+    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white h-full flex flex-col">
+      {/* Product Image and Basic Info */}
+      <div className="flex items-start gap-3 mb-3">
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-12 w-12 object-cover rounded shrink-0"
+          />
+        ) : (
+          <div className="h-12 w-12 bg-gray-200 rounded flex items-center justify-center shrink-0">
+            <Package className="h-6 w-6 text-gray-400" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-sm leading-tight truncate">
+            {product.name}
+          </h3>
+          {product.barcode && (
+            <div className="text-xs text-gray-500 mt-1 truncate">
+              📊 {product.barcode}
+            </div>
+          )}
+          {product.category && (
+            <div className="text-xs text-gray-500 truncate">
+              {product.category}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Price and Stock */}
+      <div className="flex flex-col justify-start items-center mb-3">
+        <div className="font-semibold text-green-600 text-sm">
+          {formatCurrency(product.price == null ? 0 : product.price)}
+        </div>
+        <div className="text-sm text-gray-600">
+          Stock: <span className="font-medium">{product.stock_quantity}</span>
+        </div>
+      </div>
+
+      {/* Status Badge */}
+      <div className="mb-3">
+        {product.stock_quantity === 0 ? (
+          <Badge
+            variant="destructive"
+            className="w-full justify-center text-xs"
+          >
+            Out of Stock
+          </Badge>
+        ) : product.needs_restock ? (
+          <Badge variant="secondary" className="w-full justify-center text-xs">
+            Low Stock
+          </Badge>
+        ) : (
+          <Badge variant="default" className="w-full justify-center text-xs">
+            In Stock
+          </Badge>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2 mt-auto">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleEdit(product)}
+          className="flex-1 h-8 text-xs"
+        >
+          <Edit className="h-3 w-3 mr-1" />
+          Edit
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setProductToDelete(product)}
+          className="h-8 px-2 text-red-600 hover:text-red-700"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -562,7 +669,7 @@ const Inventory: React.FC = () => {
                   value={searchQuery}
                   onChange={handleSearchChange}
                   onBlur={handleSearchBlur}
-                  className="pl-10 text-base sm:text-sm" // Larger text on mobile
+                  className="pl-10 text-base sm:text-sm"
                 />
 
                 {/* Search status indicators */}
@@ -600,7 +707,6 @@ const Inventory: React.FC = () => {
                         Quick Add Options
                       </div>
 
-                      {/* Barcode API option - show when we have barcode data */}
                       {hasBarcodeData && barcodeProductData && (
                         <button
                           onClick={() => handleQuickAdd(true)}
@@ -612,7 +718,7 @@ const Inventory: React.FC = () => {
                             e.currentTarget.classList.remove("bg-green-100")
                           }
                         >
-                          <Download className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <Download className="h-4 w-4 text-green-600 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate">
                               Use product data from barcode
@@ -626,7 +732,7 @@ const Inventory: React.FC = () => {
                               {barcodeProductData.product.product_quantity_unit}
                             </div>
                           </div>
-                          <ExternalLink className="h-3 w-3 text-green-600 flex-shrink-0" />
+                          <ExternalLink className="h-3 w-3 text-green-600 shrink-0" />
                         </button>
                       )}
 
@@ -640,7 +746,7 @@ const Inventory: React.FC = () => {
                           e.currentTarget.classList.remove("bg-gray-200")
                         }
                       >
-                        <Tag className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                        <Tag className="h-4 w-4 text-blue-600 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm truncate">
                             {isBarcodeSearch
@@ -666,7 +772,7 @@ const Inventory: React.FC = () => {
                             e.currentTarget.classList.remove("bg-gray-200")
                           }
                         >
-                          <Barcode className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <Barcode className="h-4 w-4 text-green-600 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate">
                               Create product with barcode
@@ -678,7 +784,6 @@ const Inventory: React.FC = () => {
                         </button>
                       )}
 
-                      {/* Barcode lookup option - show when we don't have data yet but it's a barcode */}
                       {isBarcodeSearch &&
                         !hasBarcodeData &&
                         !barcodeLoading && (
@@ -692,7 +797,7 @@ const Inventory: React.FC = () => {
                               e.currentTarget.classList.remove("bg-blue-100")
                             }
                           >
-                            <ExternalLink className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <ExternalLink className="h-4 w-4 text-blue-600 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-sm truncate">
                                 Look up product information
@@ -708,7 +813,7 @@ const Inventory: React.FC = () => {
                 )}
               </div>
 
-              {/* Scanner Dialog with mobile-optimized trigger */}
+              {/* Scanner Dialog */}
               <ScannerDialog
                 onScan={handleBarcodeScan}
                 autoCloseAfterScan={true}
@@ -725,7 +830,29 @@ const Inventory: React.FC = () => {
               />
             </div>
 
-            {/* Rest of your filter dropdowns remain the same */}
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="flex border rounded-md">
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="h-9 px-3 rounded-r-none border-0"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "card" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("card")}
+                  className="h-9 px-3 rounded-l-none border-0"
+                >
+                  <Grid className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Category Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -748,6 +875,7 @@ const Inventory: React.FC = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Stock Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -791,8 +919,7 @@ const Inventory: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Rest of your component remains the same... */}
-      {/* Products Table */}
+      {/* Products Display */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>
@@ -805,7 +932,7 @@ const Inventory: React.FC = () => {
             )}
           </CardTitle>
 
-          {/* Pagination Controls - Show when pagination is needed */}
+          {/* Pagination Controls */}
           {paginationInfo.totalPages > 1 && (
             <div className="flex items-center gap-2">
               <div className="text-sm text-gray-600">
@@ -849,7 +976,7 @@ const Inventory: React.FC = () => {
           )}
         </CardHeader>
         <CardContent>
-          {filteredProducts.length === 0 ? (
+          {displayedProducts.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Package className="h-12 w-12 mx-auto mb-3 text-gray-300" />
               {searchQuery ? (
@@ -875,7 +1002,8 @@ const Inventory: React.FC = () => {
                 </>
               )}
             </div>
-          ) : (
+          ) : viewMode === "list" ? (
+            // List View
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -968,6 +1096,13 @@ const Inventory: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            // Card View
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 2xl:grid-cols-10 gap-4">
+              {displayedProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
             </div>
           )}
         </CardContent>
