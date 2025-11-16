@@ -16,4 +16,9 @@ urlpatterns = [
     path('download-image/', views.download_image, name='download-image'),
     path('bulk-import-products/', views.bulk_import_products, name='bulk-import-products'),
     path('dashboard/stats/', views.DashboardViewSet.as_view({'get': 'stats'}), name='dashboard-stats'),
+    # Authentication endpoints
+    path('auth/login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/user/', views.get_current_user, name='current_user'),
+    path('auth/logout/', views.logout, name='logout'),
 ]

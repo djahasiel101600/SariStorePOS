@@ -69,7 +69,7 @@
 
 // src/components/layout/Layout.tsx
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -79,7 +79,13 @@ import {
   BarChart3,
   Menu,
   X,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
+import { authService } from "@/services/authService";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -95,7 +101,22 @@ const navigation = [
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout } = useAuthStore();
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      logout();
+      toast.success("Logged out successfully");
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      logout();
+      navigate("/login");
+    }
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -110,7 +131,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-30",
+          "fixed lg:static inset-y-0 left-0 z-30 flex flex-col",
           "w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out",
           "lg:translate-x-0 lg:transition-none",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -132,7 +153,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
 
         {/* Navigation */}
-        <nav className="mt-6">
+        <nav className="mt-6 flex-1">
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -154,6 +175,31 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             );
           })}
         </nav>
+
+        {/* User Info and Logout */}
+        <div className="border-t border-gray-200 p-4 mt-auto">
+          <div className="flex items-center gap-3 mb-3 px-2">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700">
+              <UserIcon className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {user?.first_name && user?.last_name
+                  ? `${user.first_name} ${user.last_name}`
+                  : user?.username || "User"}
+              </p>
+              <p className="text-xs text-gray-500 truncate">{user?.email || ""}</p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </Button>
+        </div>
       </div>
 
       {/* Main content */}

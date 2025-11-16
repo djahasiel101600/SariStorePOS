@@ -1,12 +1,16 @@
 # backend/inventory/views.py
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as BaseTokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
+from django.contrib.auth.models import User
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment, UNIT_TYPES, PRICING_MODELS
 from .serializers import *
 from django.core.files.base import ContentFile
@@ -733,3 +737,49 @@ def bulk_import_products(request):
         return Response({'error': 'Invalid file encoding. Please use UTF-8 encoded CSV file.'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'error': f'Error processing CSV file: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Authentication Views
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """Custom login view that returns user data along with tokens"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            # Get user data
+            username = request.data.get('username')
+            try:
+                user = User.objects.get(username=username)
+                user_serializer = UserSerializer(user)
+                response.data['user'] = user_serializer.data
+            except User.DoesNotExist:
+                pass
+        return response
+
+
+class CustomTokenRefreshView(BaseTokenRefreshView):
+    """Custom token refresh view that allows public access"""
+    permission_classes = [AllowAny]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_current_user(request):
+    """Get current authenticated user information"""
+    serializer = UserSerializer(request.user)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout(request):
+    """Logout endpoint (JWT is stateless, but we can blacklist token if needed)"""
+    try:
+        refresh_token = request.data.get('refresh_token')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)

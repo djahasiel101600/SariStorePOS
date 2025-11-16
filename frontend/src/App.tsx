@@ -1,13 +1,16 @@
 // src/App.tsx
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import Layout from "./components/layout/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Customers from "./pages/Customers";
 import Sales from "./pages/Sales";
+import { useAuthStore } from "./store/authStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,19 +21,72 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppRoutes() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  return (
+    <Routes>
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Dashboard />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pos"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <POS />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inventory"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Inventory />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/customers"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Customers />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sales"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Sales />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/pos" element={<POS />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/sales" element={<Sales />} />
-          </Routes>
-        </Layout>
+        <AppRoutes />
         <Toaster position="top-right" expand={true} richColors closeButton />
       </Router>
     </QueryClientProvider>
