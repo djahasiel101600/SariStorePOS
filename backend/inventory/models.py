@@ -2,6 +2,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal, InvalidOperation
+import os, uuid
 
 # Unit Types for products
 UNIT_TYPES = [
@@ -20,6 +21,13 @@ PRICING_MODELS = [
     ('fixed_per_weight', 'Fixed Price Per Weight/Volume'),
     ('variable', 'Variable Pricing'),
 ]
+
+def product_image_path(instance, filename):
+    # Get file extension
+    ext = filename.split('.')[-1]
+    # Generate unique filename
+    filename = f"{uuid.uuid4()}.{ext}"
+    return os.path.join('products/', filename)
 
 class Product(models.Model):
     name = models.CharField(max_length=200)
@@ -69,7 +77,7 @@ class Product(models.Model):
     )
     
     category = models.CharField(max_length=100, blank=True)
-    image = models.ImageField(upload_to='products/', blank=True, null=True)
+    image = models.ImageField(upload_to=product_image_path, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
