@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 from django.db.models import Sum, F, DecimalField, ExpressionWrapper
 from decimal import Decimal
-from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, UserProfile, AuditLog
+from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, UserProfile, AuditLog, Shift
 
 # Custom Admin Site with Role-Based Access
 class RoleBasedAdminSite(admin.AdminSite):
@@ -82,7 +82,8 @@ class SaleAdmin(admin.ModelAdmin):
     
     def computed_total(self, obj):
         """Display computed total from sale items for verification"""
-        total = sum(item.quantity * item.unit_price for item in obj.saleitem_set.all())
+        # Use the related_name 'items' defined on SaleItem
+        total = sum(item.quantity * item.unit_price for item in getattr(obj, 'items', []).all())
         return f"${total:.2f}"
     computed_total.short_description = 'Verified Total (from items)'
     
@@ -126,7 +127,8 @@ class PurchaseAdmin(admin.ModelAdmin):
     def computed_total(self, obj):
         """Optimized computed total using aggregation"""
         from django.db.models import Sum
-        total = obj.purchaseitem_set.aggregate(
+        # Use the related_name 'items' defined on PurchaseItem
+        total = obj.items.aggregate(
             total=Sum(F('unit_cost') * F('quantity'))
         )['total'] or Decimal('0.00')
         return total
@@ -182,3 +184,12 @@ class AuditLogAdmin(admin.ModelAdmin):
 # Re-register User Admin
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
+
+
+@admin.register(Shift)
+class ShiftAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'terminal_id', 'start_time', 'end_time', 'status']
+    list_filter = ['status', 'start_time', 'user']
+    search_fields = ['user__username', 'terminal_id']
+    readonly_fields = ['start_time', 'end_time']
+    ordering = ['-start_time']

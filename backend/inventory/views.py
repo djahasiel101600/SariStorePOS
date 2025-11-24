@@ -6,15 +6,17 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as BaseTokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Count, Q, F, Avg
+from django.db.models.functions import ExtractHour
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth.models import User
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment, UNIT_TYPES, PRICING_MODELS
+from .models import Shift
 from .serializers import *
 from .permissions import RoleRequiredPermission
-from .decorators import role_required
+from .decorators import drf_role_required, role_required
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils.text import slugify
@@ -102,7 +104,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
 
 class SaleViewSet(viewsets.ModelViewSet):
-    permission_classes = [RoleRequiredPermission]
+    # Require authentication by default; detailed role checks are applied in get_permissions()
+    permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
         """
@@ -127,18 +130,22 @@ class SaleViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request):
         try:
+            # Support idempotency: if client sends an Idempotency-Key header,
+            # return existing Sale if one was already created with that key.
+            idempotency_key = None
+            try:
+                idempotency_key = request.headers.get('Idempotency-Key')
+            except Exception:
+                idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+
+            if idempotency_key:
+                existing = Sale.objects.filter(idempotency_key=idempotency_key).first()
+                if existing:
+                    return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+
+            # Validate incoming payload first (do not save yet - we need to compute totals)
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-
-            # Save with cashier - handle the case where field might not exist yet
-            try:
-                sale = serializer.save(cashier=request.user)
-            except Exception as e:
-                # If cashier field doesn't exist yet, save without it
-                if 'cashier' in str(e):
-                    sale = serializer.save()
-                else:
-                    raise
             
             # Calculate total amount from items
             items_data = request.data.get('items', [])
@@ -183,7 +190,20 @@ class SaleViewSet(viewsets.ModelViewSet):
 
             serializer = self.get_serializer(data=sale_data)
             serializer.is_valid(raise_exception=True)
-            sale = serializer.save(cashier=request.user)
+
+            # Assign current active shift for the user if exists; require shift
+            active_shift = Shift.objects.filter(user=request.user, status='open').first()
+            if not active_shift:
+                return Response({'error': 'No active shift. Please start a shift before creating sales.'}, status=status.HTTP_403_FORBIDDEN)
+
+            # Attach idempotency key if provided so duplicates are prevented
+            if idempotency_key:
+                sale_data['idempotency_key'] = idempotency_key
+                serializer = self.get_serializer(data=sale_data)
+                serializer.is_valid(raise_exception=True)
+                sale = serializer.save(cashier=request.user, shift=active_shift)
+            else:
+                sale = serializer.save(cashier=request.user, shift=active_shift)
             
             # Create sale items and update stock
             for item_data in sale_items:
@@ -278,6 +298,45 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+class ShiftViewSet(viewsets.ModelViewSet):
+    queryset = Shift.objects.all().order_by('-start_time')
+    serializer_class = None  # set dynamically
+
+    def get_serializer_class(self):
+        # Lazy import to avoid circular
+        from .serializers import ShiftSerializer
+        return ShiftSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Admins can see all; others see own shifts
+        if hasattr(self.request, 'user') and not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Start a shift for current user. Enforce one active shift per user.
+        terminal_id = request.data.get('terminal_id') or request.headers.get('X-Terminal-Id')
+        existing = Shift.objects.filter(user=request.user, status='open').first()
+        if existing:
+            serializer = self.get_serializer(existing)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        shift = Shift.objects.create(user=request.user, terminal_id=terminal_id)
+        serializer = self.get_serializer(shift)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def end(self, request, pk=None):
+        shift = self.get_object()
+        if shift.status != 'open':
+            return Response({'error': 'Shift already closed'}, status=status.HTTP_400_BAD_REQUEST)
+        shift.status = 'closed'
+        shift.end_time = timezone.now()
+        shift.save(update_fields=['status', 'end_time'])
+        return Response(self.get_serializer(shift).data)
+
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all().order_by('-date_created')
     serializer_class = PaymentSerializer
@@ -371,6 +430,47 @@ class DashboardViewSet(viewsets.ViewSet):
                 total=Sum('total_amount')
             )['total'] or 0
             
+            # Sales trends - last 30 days daily breakdown
+            sales_trend = []
+            for i in range(29, -1, -1):
+                date = today - timedelta(days=i)
+                daily_total = Sale.objects.filter(
+                    date_created__date=date
+                ).aggregate(total=Sum('total_amount'))['total'] or 0
+                sales_trend.append({
+                    'date': date.isoformat(),
+                    'amount': float(daily_total)
+                })
+            
+            # Payment method breakdown (last 30 days)
+            payment_breakdown = Sale.objects.filter(
+                date_created__date__gte=month_ago
+            ).values('payment_method').annotate(
+                total=Sum('total_amount'),
+                count=Count('id')
+            ).order_by('-total')
+            
+            # Profit analysis (last 30 days) - handle NULL cost_price gracefully
+            revenue = Sale.objects.filter(
+                date_created__date__gte=month_ago
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            
+            # Calculate cost from sale items (only for products with cost_price set)
+            try:
+                cost_data = SaleItem.objects.filter(
+                    sale__date_created__date__gte=month_ago,
+                    product__cost_price__isnull=False
+                ).aggregate(
+                    total_cost=Sum(F('quantity') * F('product__cost_price'))
+                )
+                total_cost = cost_data['total_cost'] or 0
+            except Exception as cost_err:
+                print(f"Cost calculation error: {cost_err}")
+                total_cost = 0
+            
+            gross_profit = float(revenue) - float(total_cost)
+            profit_margin = (gross_profit / float(revenue) * 100) if revenue > 0 else 0
+            
             # Product counts
             low_stock_count = Product.objects.filter(
                 stock_quantity__lte=F('min_stock_level'),
@@ -381,7 +481,7 @@ class DashboardViewSet(viewsets.ViewSet):
             out_of_stock_count = Product.objects.filter(stock_quantity=0, is_active=True).count()
             
             # Recent sales for dashboard
-            recent_sales = Sale.objects.select_related('customer').prefetch_related('items').order_by('-date_created')[:5]
+            recent_sales = Sale.objects.select_related('customer', 'cashier', 'shift').prefetch_related('items').order_by('-date_created')[:5]
             recent_sales_data = SaleSerializer(recent_sales, many=True).data
             
             # Best selling products (last 30 days)
@@ -394,12 +494,78 @@ class DashboardViewSet(viewsets.ViewSet):
                 total_revenue=Sum(F('quantity') * F('unit_price'))
             ).order_by('-total_sold')[:5]
             
+            # Top customers by spending (last 30 days)
+            try:
+                top_customers = Sale.objects.filter(
+                    date_created__date__gte=month_ago,
+                    customer__isnull=False
+                ).values(
+                    'customer__id', 'customer__name'
+                ).annotate(
+                    total_spent=Sum('total_amount'),
+                    transaction_count=Count('id')
+                ).order_by('-total_spent')[:5]
+            except Exception:
+                top_customers = []
+            
+            # Category performance (last 30 days)
+            try:
+                category_performance = SaleItem.objects.filter(
+                    sale__date_created__date__gte=month_ago,
+                    product__category__isnull=False
+                ).values(
+                    'product__category'
+                ).annotate(
+                    total_revenue=Sum(F('quantity') * F('unit_price')),
+                    items_sold=Sum('quantity')
+                ).order_by('-total_revenue')[:8]
+            except Exception:
+                category_performance = []
+            
+            # Shift performance (last 30 days)
+            try:
+                shift_performance = Sale.objects.filter(
+                    date_created__date__gte=month_ago,
+                    cashier__isnull=False
+                ).values(
+                    'cashier__username', 'cashier__id'
+                ).annotate(
+                    total_sales=Sum('total_amount'),
+                    transaction_count=Count('id'),
+                    avg_transaction=Avg('total_amount')
+                ).order_by('-total_sales')[:10]
+            except Exception:
+                shift_performance = []
+            
+            # Hourly sales pattern (last 7 days) - use Python to extract hour to avoid SQLite issues
+            try:
+                from django.db.models.functions import ExtractHour
+                hourly_sales = Sale.objects.filter(
+                    date_created__gte=timezone.now() - timedelta(days=7)
+                ).annotate(
+                    hour=ExtractHour('date_created')
+                ).values('hour').annotate(
+                    total=Sum('total_amount'),
+                    count=Count('id')
+                ).order_by('hour')
+            except Exception as hourly_err:
+                print(f"Hourly sales error: {hourly_err}")
+                hourly_sales = []
+            
             return Response({
                 'sales': {
                     'today': float(today_sales),
                     'week': float(weekly_sales),
                     'month': float(monthly_sales),
+                    'trend': sales_trend,
                 },
+                'profit': {
+                    'revenue': float(revenue),
+                    'cost': float(total_cost),
+                    'gross_profit': gross_profit,
+                    'margin_percent': round(profit_margin, 2),
+                },
+                'payment_methods': list(payment_breakdown),
                 'inventory': {
                     'total_products': total_products,
                     'low_stock': low_stock_count,
@@ -407,9 +573,16 @@ class DashboardViewSet(viewsets.ViewSet):
                 },
                 'recent_sales': recent_sales_data,
                 'best_sellers': list(best_sellers),
+                'top_customers': list(top_customers),
+                'category_performance': list(category_performance),
+                'shift_performance': list(shift_performance),
+                'hourly_pattern': list(hourly_sales),
             })
             
         except Exception as e:
+            import traceback
+            print(f"Dashboard stats error: {str(e)}")
+            print(traceback.format_exc())
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -471,22 +644,18 @@ def download_image(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@role_required(['admin', 'manager', 'inventory_manager'])
 def bulk_import_products(request):
     """
     Bulk import products from CSV file.
-    
-    Expected CSV columns:
-    - Required: name, price, stock_quantity
-    - Optional: barcode, category, unit_type, pricing_model, cost_price, min_stock_level, image_url
-    
-    Request body:
-    - file: CSV file
-    - download_images: boolean (default: False)
-    - preview_only: boolean (default: False) - if True, only validate and return preview
-    
-    Returns preview/validation results or import results.
     """
+    # Role checking (additional to authentication)
+    if not hasattr(request.user, 'profile'):
+        return Response({'error': 'User profile not found'}, status=status.HTTP_403_FORBIDDEN)
+    
+    allowed_roles = ['admin', 'manager', 'inventory_manager']
+    if request.user.profile.role not in allowed_roles:
+        return Response({'error': 'Insufficient permissions'}, status=status.HTTP_403_FORBIDDEN)
+    
     MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
     MAX_ROWS = 1000
     
@@ -497,25 +666,23 @@ def bulk_import_products(request):
     download_images = request.data.get('download_images', 'false').lower() == 'true'
     preview_only = request.data.get('preview_only', 'false').lower() == 'true'
     
-    # Check file size
+    # Validate file
     if csv_file.size > MAX_FILE_SIZE:
         return Response(
             {'error': f'File size exceeds maximum allowed size of {MAX_FILE_SIZE / 1024 / 1024}MB'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Check file extension
     if not csv_file.name.lower().endswith('.csv'):
         return Response({'error': 'File must be a CSV file'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        # Read CSV file
-        decoded_file = csv_file.read().decode('utf-8-sig')  # Handle BOM
+        # Read and parse CSV
+        decoded_file = csv_file.read().decode('utf-8-sig')
         csv_reader = csv.DictReader(io.StringIO(decoded_file))
-        
         rows = list(csv_reader)
         
-        # Check row limit
+        # Validate basic file structure
         if len(rows) > MAX_ROWS:
             return Response(
                 {'error': f'CSV file contains {len(rows)} rows. Maximum allowed is {MAX_ROWS} rows.'},
@@ -527,9 +694,6 @@ def bulk_import_products(request):
         
         # Validate headers
         required_headers = ['name', 'price', 'stock_quantity']
-        optional_headers = ['barcode', 'category', 'unit_type', 'pricing_model', 'cost_price', 'min_stock_level', 'image_url']
-        all_headers = required_headers + optional_headers
-        
         csv_headers = [h.strip().lower() for h in csv_reader.fieldnames] if csv_reader.fieldnames else []
         
         missing_headers = [h for h in required_headers if h not in csv_headers]
@@ -539,116 +703,130 @@ def bulk_import_products(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Validate and process rows
+        # Process rows
         validated_rows = []
         errors = []
-        existing_products = set()
         
-        # Get existing product names and barcodes for duplicate checking
-        existing_names = set(Product.objects.filter(is_active=True).values_list('name', flat=True))
-        existing_barcodes = set(
-            Product.objects.filter(is_active=True, barcode__isnull=False)
-            .exclude(barcode='')
-            .values_list('barcode', flat=True)
-        )
+        # Use iterator for better performance with large datasets
+        existing_names = Product.objects.filter(is_active=True).values_list('name', flat=True)
+        existing_barcodes = Product.objects.filter(
+            is_active=True, 
+            barcode__isnull=False
+        ).exclude(barcode='').values_list('barcode', flat=True)
         
-        for row_num, row in enumerate(rows, start=2):  # Start at 2 (row 1 is header)
+        existing_names_set = set(existing_names)
+        existing_barcodes_set = set(existing_barcodes)
+        
+        seen_names_in_csv = set()
+        seen_barcodes_in_csv = set()
+        
+        for row_num, row in enumerate(rows, start=2):
             row_errors = []
             row_data = {}
             
-            # Required fields
+            # Process name
             name = row.get('name', '').strip()
             if not name:
-                row_errors.append('name is required')
+                row_errors.append('Name is required')
             else:
                 row_data['name'] = name
+                # Check duplicates in CSV
+                if name.lower() in seen_names_in_csv:
+                    row_errors.append(f'Duplicate product name in CSV: "{name}"')
+                else:
+                    seen_names_in_csv.add(name.lower())
+                # Check duplicates in database
+                if name in existing_names_set:
+                    row_errors.append(f'Product with name "{name}" already exists')
             
-            # Check for duplicate name
-            if name and name in existing_names:
-                row_errors.append(f'Product with name "{name}" already exists')
-            
-            # Price validation
+            # Process price
             price_str = row.get('price', '').strip()
             if not price_str:
-                row_errors.append('price is required')
+                row_errors.append('Price is required')
             else:
                 try:
                     price = Decimal(price_str)
                     if price < 0:
-                        row_errors.append('price must be >= 0')
+                        row_errors.append('Price must be >= 0')
                     else:
                         row_data['price'] = price
                 except (InvalidOperation, ValueError):
-                    row_errors.append(f'invalid price value: {price_str}')
+                    row_errors.append(f'Invalid price value: {price_str}')
             
-            # Stock quantity validation
+            # Process stock
             stock_str = row.get('stock_quantity', '').strip()
             if not stock_str:
-                row_errors.append('stock_quantity is required')
+                row_errors.append('Stock quantity is required')
             else:
                 try:
                     stock = Decimal(stock_str)
                     if stock < 0:
-                        row_errors.append('stock_quantity must be >= 0')
+                        row_errors.append('Stock quantity must be >= 0')
                     else:
                         row_data['stock_quantity'] = stock
                 except (InvalidOperation, ValueError):
-                    row_errors.append(f'invalid stock_quantity value: {stock_str}')
+                    row_errors.append(f'Invalid stock quantity value: {stock_str}')
             
-            # Optional fields with defaults
+            # Process barcode
             barcode = row.get('barcode', '').strip() or None
             if barcode:
-                # Check for duplicate barcode
-                if barcode in existing_barcodes:
+                # Check duplicates in CSV
+                if barcode in seen_barcodes_in_csv:
+                    row_errors.append(f'Duplicate barcode in CSV: "{barcode}"')
+                else:
+                    seen_barcodes_in_csv.add(barcode)
+                # Check duplicates in database
+                if barcode in existing_barcodes_set:
                     row_errors.append(f'Product with barcode "{barcode}" already exists')
                 row_data['barcode'] = barcode
-            else:
-                row_data['barcode'] = None
             
+            # Process other fields...
             category = row.get('category', '').strip() or ''
             row_data['category'] = category
             
             unit_type = row.get('unit_type', '').strip().lower() or 'piece'
-            if unit_type not in [ut[0] for ut in UNIT_TYPES]:
-                row_errors.append(f'invalid unit_type: {unit_type}. Must be one of: {", ".join([ut[0] for ut in UNIT_TYPES])}')
+            valid_unit_types = [ut[0] for ut in UNIT_TYPES]
+            if unit_type not in valid_unit_types:
+                row_errors.append(f'Invalid unit_type: {unit_type}. Must be one of: {", ".join(valid_unit_types)}')
             else:
                 row_data['unit_type'] = unit_type
             
             pricing_model = row.get('pricing_model', '').strip().lower() or 'fixed_per_unit'
-            if pricing_model not in [pm[0] for pm in PRICING_MODELS]:
-                row_errors.append(f'invalid pricing_model: {pricing_model}. Must be one of: {", ".join([pm[0] for pm in PRICING_MODELS])}')
+            valid_pricing_models = [pm[0] for pm in PRICING_MODELS]
+            if pricing_model not in valid_pricing_models:
+                row_errors.append(f'Invalid pricing_model: {pricing_model}. Must be one of: {", ".join(valid_pricing_models)}')
             else:
                 row_data['pricing_model'] = pricing_model
             
-            # Cost price (optional)
+            # Process cost price
             cost_price_str = row.get('cost_price', '').strip()
             if cost_price_str:
                 try:
                     cost_price = Decimal(cost_price_str)
                     if cost_price < 0:
-                        row_errors.append('cost_price must be >= 0')
+                        row_errors.append('Cost price must be >= 0')
                     else:
                         row_data['cost_price'] = cost_price
                 except (InvalidOperation, ValueError):
-                    row_errors.append(f'invalid cost_price value: {cost_price_str}')
+                    row_errors.append(f'Invalid cost price value: {cost_price_str}')
             else:
                 row_data['cost_price'] = None
             
-            # Min stock level (optional, default 5)
+            # Process min stock level
             min_stock_str = row.get('min_stock_level', '').strip()
             if min_stock_str:
                 try:
                     min_stock = Decimal(min_stock_str)
                     if min_stock < 0:
-                        row_errors.append('min_stock_level must be >= 0')
+                        row_errors.append('Min stock level must be >= 0')
                     else:
                         row_data['min_stock_level'] = min_stock
                 except (InvalidOperation, ValueError):
-                    row_errors.append(f'invalid min_stock_level value: {min_stock_str}')
+                    row_errors.append(f'Invalid min stock level value: {min_stock_str}')
             else:
                 row_data['min_stock_level'] = Decimal('5')
             
-            # Image URL (optional)
+            # Process image URL
             image_url = row.get('image_url', '').strip() or None
             row_data['image_url'] = image_url
             
@@ -656,21 +834,24 @@ def bulk_import_products(request):
                 errors.append({
                     'row': row_num,
                     'errors': row_errors,
-                    'data': row_data
+                    'data': {k: str(v) if isinstance(v, Decimal) else v for k, v in row_data.items()}
                 })
             else:
                 validated_rows.append({
                     'row': row_num,
                     'data': row_data
                 })
-                # Track for duplicate checking within CSV
-                if name:
-                    existing_products.add(name.lower())
-                if barcode:
-                    existing_products.add(barcode)
         
-        # If there are validation errors, return them (fail entirely)
+        # Return validation errors if any
         if errors:
+            # Log failed attempt
+            AuditLog.objects.create(
+                user=request.user,
+                action='INVENTORY_UPDATE',
+                model='Product',
+                details=f'Bulk import failed: {len(errors)} validation errors'
+            )
+            
             return Response({
                 'valid': False,
                 'errors': errors,
@@ -679,7 +860,7 @@ def bulk_import_products(request):
                 'error_rows': len(errors)
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # If preview only, return preview
+        # Return preview if requested
         if preview_only:
             return Response({
                 'valid': True,
@@ -688,18 +869,17 @@ def bulk_import_products(request):
                 'download_images': download_images
             }, status=status.HTTP_200_OK)
         
-        # Actually import the products
+        # Perform actual import
         imported_products = []
         skipped_products = []
         
         with transaction.atomic():
             for row_info in validated_rows:
                 row_data = row_info['data']
-                
-                # Double-check for duplicates (in case of race condition)
                 name = row_data['name']
                 barcode = row_data.get('barcode')
                 
+                # Final duplicate check within transaction
                 if Product.objects.filter(is_active=True, name=name).exists():
                     skipped_products.append({
                         'row': row_info['row'],
@@ -718,46 +898,24 @@ def bulk_import_products(request):
                 
                 # Create product
                 product_data = {
-                    'name': row_data['name'],
-                    'barcode': row_data.get('barcode'),
+                    'name': name,
+                    'barcode': barcode,
                     'category': row_data.get('category', ''),
                     'unit_type': row_data.get('unit_type', 'piece'),
                     'pricing_model': row_data.get('pricing_model', 'fixed_per_unit'),
-                    'price': row_data.get('price'),
+                    'price': row_data['price'],
                     'cost_price': row_data.get('cost_price'),
-                    'stock_quantity': row_data.get('stock_quantity', 0),
-                    'min_stock_level': row_data.get('min_stock_level', 5),
+                    'stock_quantity': row_data['stock_quantity'],
+                    'min_stock_level': row_data.get('min_stock_level', Decimal('5')),
                     'is_active': True
                 }
                 
-                # Handle image if provided and download_images is enabled
+                # Handle image download
                 image_path = None
                 if download_images and row_data.get('image_url'):
-                    try:
-                        image_url = row_data['image_url']
-                        resp = requests.get(image_url, timeout=15)
-                        if resp.status_code == 200:
-                            content_type = resp.headers.get('Content-Type', '')
-                            if content_type.startswith('image'):
-                                # Determine extension
-                                ext = '.jpg'
-                                if 'png' in content_type:
-                                    ext = '.png'
-                                elif 'webp' in content_type:
-                                    ext = '.webp'
-                                elif 'gif' in content_type:
-                                    ext = '.gif'
-                                
-                                filename = f"{slugify(row_data['name']) or 'product'}{ext}"
-                                relative_path = f"products/{filename}"
-                                storage_path = default_storage.get_available_name(relative_path)
-                                saved_path = default_storage.save(storage_path, ContentFile(resp.content))
-                                image_path = saved_path
-                    except Exception as e:
-                        # Log error but don't fail the import
-                        print(f"Failed to download image for {row_data['name']}: {str(e)}")
+                    image_path = download_and_save_image(row_data['image_url'], name)
                 
-                # Create product
+                # Create and save product
                 product = Product(**product_data)
                 if image_path:
                     product.image.name = image_path
@@ -766,14 +924,23 @@ def bulk_import_products(request):
                 imported_products.append({
                     'row': row_info['row'],
                     'id': product.id,
-                    'name': product.name
+                    'name': product.name,
+                    'barcode': product.barcode
                 })
+        
+        # Log successful import
+        AuditLog.objects.create(
+            user=request.user,
+            action='INVENTORY_UPDATE',
+            model='Product',
+            details=f'Bulk import successful: {len(imported_products)} products imported, {len(skipped_products)} skipped'
+        )
         
         return Response({
             'success': True,
             'imported': len(imported_products),
             'skipped': len(skipped_products),
-            'total_rows': len(validated_rows),
+            'total_rows': len(rows),
             'imported_products': imported_products,
             'skipped_products': skipped_products
         }, status=status.HTTP_201_CREATED)
@@ -781,8 +948,38 @@ def bulk_import_products(request):
     except UnicodeDecodeError:
         return Response({'error': 'Invalid file encoding. Please use UTF-8 encoded CSV file.'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        # Log the error
+        AuditLog.objects.create(
+            user=request.user,
+            action='INVENTORY_UPDATE',
+            model='Product',
+            details=f'Bulk import error: {str(e)}'
+        )
         return Response({'error': f'Error processing CSV file: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def download_and_save_image(image_url, product_name):
+    """Helper function to download and save product image"""
+    try:
+        resp = requests.get(image_url, timeout=15)
+        if resp.status_code == 200 and resp.headers.get('Content-Type', '').startswith('image'):
+            # Determine file extension
+            content_type = resp.headers.get('Content-Type', '')
+            ext = '.jpg'  # default
+            if 'png' in content_type:
+                ext = '.png'
+            elif 'webp' in content_type:
+                ext = '.webp'
+            elif 'gif' in content_type:
+                ext = '.gif'
+            
+            filename = f"{slugify(product_name) or 'product'}{ext}"
+            relative_path = f"products/{filename}"
+            storage_path = default_storage.get_available_name(relative_path)
+            saved_path = default_storage.save(storage_path, ContentFile(resp.content))
+            return saved_path
+    except Exception as e:
+        print(f"Failed to download image for {product_name}: {str(e)}")
+    return None
 
 # Authentication Views
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -829,14 +1026,15 @@ def logout(request):
     except Exception as e:
         return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
     
-@role_required(['admin', 'manager'])
+@api_view(['GET'])
+@drf_role_required(['admin', 'manager'])
 def sales_performance_report(request):
     """Report showing sales per cashier"""
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
-    
+
     sales_data = Sale.objects.filter(
-        sale_date__gte=start_date
+        date_created__gte=start_date
     ).values(
         'cashier__username',
         'cashier__first_name',
@@ -847,9 +1045,176 @@ def sales_performance_report(request):
         total_revenue=Sum('total_amount'),
         average_sale=Avg('total_amount')
     ).order_by('-total_revenue')
-    
-    return JsonResponse({
+
+    return Response({
         'period_days': days,
         'start_date': start_date,
         'data': list(sales_data)
     })
+
+
+# Admin ViewSets
+class UserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for user management (admin only)
+    """
+    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, RoleRequiredPermission]
+    allowed_roles = ['admin', 'manager']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return UserCreateSerializer
+        return UserSerializer
+    
+    def perform_update(self, serializer):
+        # Don't allow password updates through this endpoint
+        serializer.save()
+
+
+class ShiftViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for shift management and reporting
+    """
+    queryset = Shift.objects.all().order_by('-start_time')
+    serializer_class = ShiftSerializer
+    permission_classes = [IsAuthenticated, RoleRequiredPermission]
+    allowed_roles = ['admin', 'manager']
+    
+    def get_permissions(self):
+        # Allow all authenticated users to start/end their own shifts
+        if self.action in ['start_shift', 'end_shift', 'my_shift']:
+            return [IsAuthenticated()]
+        return super().get_permissions()
+    
+    def get_queryset(self):
+        queryset = Shift.objects.all().order_by('-start_time')
+        
+        # Filter by date range if provided
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(start_time__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(start_time__date__lte=end_date)
+            
+        return queryset
+    
+    @action(detail=False, methods=['get'], url_path='active')
+    def active(self, request):
+        """Get all currently active shifts"""
+        active_shifts = Shift.objects.filter(end_time__isnull=True).order_by('-start_time')
+        serializer = self.get_serializer(active_shifts, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='my-shift')
+    def my_shift(self, request):
+        """Get current user's active shift"""
+        shift = Shift.objects.filter(user=request.user, end_time__isnull=True).first()
+        if shift:
+            serializer = self.get_serializer(shift)
+            return Response(serializer.data)
+        return Response(None, status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=False, methods=['post'], url_path='start')
+    def start_shift(self, request):
+        """Start a new shift for the current user"""
+        # Check if user already has an active shift
+        existing_shift = Shift.objects.filter(user=request.user, end_time__isnull=True).first()
+        if existing_shift:
+            return Response(
+                {'error': 'You already have an active shift'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = ShiftStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        shift = Shift.objects.create(
+            user=request.user,
+            opening_cash=serializer.validated_data.get('opening_cash', 0),
+            notes=serializer.validated_data.get('notes', ''),
+            terminal_id=serializer.validated_data.get('terminal_id', ''),
+            status='open'
+        )
+        
+        return Response(ShiftSerializer(shift).data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'], url_path='end')
+    def end_shift(self, request, pk=None):
+        """End the shift with closing cash count"""
+        shift = self.get_object()
+        
+        # Only the shift owner or admin/manager can end it
+        if shift.user != request.user and not request.user.profile.role in ['admin', 'manager']:
+            return Response(
+                {'error': 'You can only end your own shift'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if shift.end_time:
+            return Response(
+                {'error': 'Shift already ended'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = ShiftEndSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        shift.closing_cash = serializer.validated_data['closing_cash']
+        shift.notes = serializer.validated_data.get('notes', shift.notes)
+        shift.end_time = timezone.now()
+        shift.status = 'closed'
+        shift.save()
+        
+        return Response(ShiftSerializer(shift).data)
+    
+    @action(detail=False, methods=['get'], url_path='employee-performance')
+    def employee_performance(self, request):
+        """Get employee performance metrics"""
+        from django.db.models import Sum, Count, Avg, Max
+        
+        # Filter by date range if provided
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        shifts = Shift.objects.all()
+        if start_date:
+            shifts = shifts.filter(start_time__date__gte=start_date)
+        if end_date:
+            shifts = shifts.filter(start_time__date__lte=end_date)
+        
+        # Aggregate performance by user using Sale model directly
+        performance = shifts.values(
+            'user__id',
+            'user__username',
+            'user__first_name',
+            'user__last_name'
+        ).annotate(
+            shift_count=Count('id', distinct=True),
+            total_sales=Count('sales__id'),
+            total_revenue=Sum('sales__total_amount'),
+            last_shift=Max('start_time')
+        ).order_by('-total_revenue')
+        
+        # Calculate average sale
+        result = []
+        for perf in performance:
+            avg_sale = (
+                float(perf['total_revenue'] or 0) / perf['total_sales'] 
+                if perf['total_sales'] and perf['total_sales'] > 0 
+                else 0
+            )
+            result.append({
+                'user_id': perf['user__id'],
+                'user_name': f"{perf['user__first_name']} {perf['user__last_name']}".strip() or perf['user__username'],
+                'shift_count': perf['shift_count'],
+                'total_sales': perf['total_sales'] or 0,
+                'total_revenue': float(perf['total_revenue'] or 0),
+                'avg_sale': float(avg_sale),
+                'last_shift': perf['last_shift']
+            })
+        
+        return Response(result)

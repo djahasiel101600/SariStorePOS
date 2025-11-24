@@ -195,6 +195,11 @@ class Sale(models.Model):
         choices=PAYMENT_METHODS, 
         default='cash'
     )
+    # Optional idempotency key provided by client to avoid duplicate creates
+    idempotency_key = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    
+        # Link sale to a Shift (created when a staff starts working on a terminal)
+    shift = models.ForeignKey('Shift', on_delete=models.SET_NULL, null=True, blank=True, related_name='sales')
 
     class Meta:
         db_table = 'sales'
@@ -355,6 +360,65 @@ class PurchaseItem(models.Model):
         except Exception as e:
             # Log error but don't break the application
             print(f"Error updating product stock for {self.product.name}: {e}")
+
+
+class Shift(models.Model):
+    """Represents a staff shift/session on a terminal."""
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('closed', 'Closed'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='shifts')
+    terminal_id = models.CharField(max_length=200, blank=True, null=True)
+    start_time = models.DateTimeField(auto_now_add=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    
+    # Cash management
+    opening_cash = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    closing_cash = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'shifts'
+        indexes = [models.Index(fields=['user', 'start_time', 'status'])]
+
+    def __str__(self):
+        return f"Shift #{self.id} - {self.user.username} - {self.status}"
+    
+    @property
+    def sales_count(self):
+        """Count of sales made during this shift"""
+        return self.sales.count()
+    
+    @property
+    def total_sales(self):
+        """Total revenue from sales during this shift"""
+        from django.db.models import Sum
+        total = self.sales.aggregate(total=Sum('total_amount'))['total']
+        return total or Decimal('0.00')
+    
+    @property
+    def expected_cash(self):
+        """Expected cash = opening cash + cash sales"""
+        if not self.sales.exists():
+            return self.opening_cash
+        
+        from django.db.models import Sum
+        cash_sales = self.sales.filter(payment_method='cash').aggregate(
+            total=Sum('total_amount')
+        )['total'] or Decimal('0.00')
+        
+        return self.opening_cash + cash_sales
+    
+    @property
+    def cash_difference(self):
+        """Difference between expected and actual closing cash"""
+        if self.closing_cash is None:
+            return None
+        return self.closing_cash - self.expected_cash
 
 # New model for recording payments against utang
 class Payment(models.Model):
