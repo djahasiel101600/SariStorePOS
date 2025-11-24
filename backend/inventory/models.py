@@ -3,6 +3,9 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal, InvalidOperation
 import os, uuid
+from django.db.models.signals import post_save
+from django.contrib.auth.models import User
+from django.dispatch import receiver
 
 # Unit Types for products
 UNIT_TYPES = [
@@ -21,6 +24,34 @@ PRICING_MODELS = [
     ('fixed_per_weight', 'Fixed Price Per Weight/Volume'),
     ('variable', 'Variable Pricing'),
 ]
+
+class UserProfile(models.Model):
+    ROLE_CHOICES = [
+        ('admin', 'Administrator'),
+        ('manager', 'Manager'),
+        ('cashier', 'Cashier'),
+        ('inventory_manager', 'Inventory Manager'),
+    ]
+    
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='cashier')
+    employee_id = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    is_active_employee = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.role}"
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    if hasattr(instance, 'profile'):
+        instance.profile.save()
 
 def product_image_path(instance, filename):
     # Get file extension
@@ -99,19 +130,25 @@ class Product(models.Model):
         return 0
     
     def calculate_price_for_quantity(self, quantity):
-        """Calculate total price for given quantity"""
+        """Calculate total price for given quantity - returns Decimal"""
         if self.pricing_model == 'variable' or not self.price:
             # For variable pricing, price is set at sale time
             return None
-        return float(self.price) * float(quantity)
+        try:
+            return Decimal(str(quantity)) * self.price
+        except (InvalidOperation, TypeError):
+            return None
     
     def calculate_quantity_for_amount(self, amount):
-        """For variable pricing: calculate quantity for given amount"""
+        """For variable pricing: calculate quantity for given amount - returns Decimal"""
         if self.pricing_model != 'variable' or not self.price:
             return None
         if self.price == 0:
             return None
-        return float(amount) / float(self.price)
+        try:
+            return Decimal(str(amount)) / self.price
+        except (InvalidOperation, ZeroDivisionError):
+            return None
 
 class Customer(models.Model):
     name = models.CharField(max_length=200)
@@ -130,14 +167,22 @@ class Customer(models.Model):
         return self.name
 
 class Sale(models.Model):
+    cashier = models.ForeignKey(
+        User, 
+        on_delete=models.PROTECT, 
+        related_name='sales',
+        null=True,  # Allow null for migration safety
+        blank=True
+    )
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     # Utang tracking on sale
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     is_fully_paid = models.BooleanField(default=True)
     due_date = models.DateField(null=True, blank=True)
-
     date_created = models.DateTimeField(auto_now_add=True)
+    items_sold = models.ManyToManyField('Product', through='SaleItem')
+    
     PAYMENT_METHODS = [
         ('cash', 'Cash'),
         ('card', 'Card'),
@@ -151,9 +196,11 @@ class Sale(models.Model):
         default='cash'
     )
 
-
     class Meta:
         db_table = 'sales'
+        indexes = [
+            models.Index(fields=['cashier', 'date_created']),
+        ]
 
     def __str__(self):
         return f"Sale #{self.id} - {self.total_amount}"
@@ -185,9 +232,12 @@ class SaleItem(models.Model):
     class Meta:
         db_table = 'sale_items'
 
+    def __str__(self):
+        return f"{self.product.name} - {self.quantity}"
+
     @property
     def total_price(self):
-        return float(self.quantity) * float(self.unit_price)
+        return self.quantity * self.unit_price  # Keep as Decimal
 
 class Purchase(models.Model):
     supplier = models.CharField(max_length=200)
@@ -197,6 +247,9 @@ class Purchase(models.Model):
 
     class Meta:
         db_table = 'purchases'
+
+    def __str__(self):
+        return f"Purchase #{self.id} - {self.supplier}"
 
 class PurchaseItem(models.Model):
     purchase = models.ForeignKey(Purchase, related_name='items', on_delete=models.CASCADE)
@@ -223,51 +276,49 @@ class PurchaseItem(models.Model):
     class Meta:
         db_table = 'purchase_items'
 
+    def __str__(self):
+        return f"{self.product.name} - {self.quantity}"
+
     def save(self, *args, **kwargs):
-        """On save, convert purchased quantity/units to product's stock units and update product cost/price.
+        """Save the PurchaseItem first, then update product stock if needed"""
+        is_new = self._state.adding  # Check if this is a new object
+        super().save(*args, **kwargs)  # Save first
+        
+        if is_new and not self.added_to_stock:
+            self.update_product_stock()
 
-        Behavior:
-        - If `purchase_unit` is 'pack' and `units_per_pack` > 1, the incoming `quantity` represents packs. We convert to pieces by quantity * units_per_pack.
-        - Compute per-piece cost = unit_cost / units_per_pack when purchase_unit is 'pack'.
-        - Update the linked Product:
-            - increase `stock_quantity` by converted pieces
-            - set `cost_price` to per-piece cost
-            - if `selling_price` provided, set `price` to selling_price (per piece)
-        - Calculate and store `profit_margin_percent` if selling_price provided and cost > 0.
-        - Use `added_to_stock` to prevent double-updating stock on subsequent saves.
-        """
-
-        # Determine per-piece quantity and per-piece cost
-        is_pack = (self.purchase_unit == 'pack' and self.units_per_pack and int(self.units_per_pack) > 1)
+    def update_product_stock(self):
+        """Update product stock and pricing - separate from save to avoid recursion"""
         try:
-            units_per_pack = int(self.units_per_pack) if self.units_per_pack else 1
-        except Exception:
-            units_per_pack = 1
-
-        # Use Decimal for all arithmetic to avoid mixing float and Decimal
-        try:
-            qty_decimal = Decimal(str(self.quantity))
-        except (InvalidOperation, TypeError):
-            qty_decimal = Decimal('0')
-
-        try:
-            unit_cost_decimal = Decimal(str(self.unit_cost))
-        except (InvalidOperation, TypeError):
-            unit_cost_decimal = Decimal('0')
-
-        if is_pack:
-            pieces_added = qty_decimal * Decimal(units_per_pack)
+            # Determine per-piece quantity and per-piece cost
+            is_pack = (self.purchase_unit == 'pack' and self.units_per_pack and int(self.units_per_pack) > 1)
             try:
-                per_piece_cost = (unit_cost_decimal / Decimal(units_per_pack))
-            except (InvalidOperation, ZeroDivisionError):
-                per_piece_cost = unit_cost_decimal
-        else:
-            pieces_added = qty_decimal
-            per_piece_cost = unit_cost_decimal
+                units_per_pack = int(self.units_per_pack) if self.units_per_pack else 1
+            except Exception:
+                units_per_pack = 1
 
-        # If not yet added to stock, update product stock and pricing
-        update_product = False
-        if not self.added_to_stock:
+            # Use Decimal for all arithmetic to avoid mixing float and Decimal
+            try:
+                qty_decimal = Decimal(str(self.quantity))
+            except (InvalidOperation, TypeError):
+                qty_decimal = Decimal('0')
+
+            try:
+                unit_cost_decimal = Decimal(str(self.unit_cost))
+            except (InvalidOperation, TypeError):
+                unit_cost_decimal = Decimal('0')
+
+            if is_pack:
+                pieces_added = qty_decimal * Decimal(units_per_pack)
+                try:
+                    per_piece_cost = (unit_cost_decimal / Decimal(units_per_pack))
+                except (InvalidOperation, ZeroDivisionError):
+                    per_piece_cost = unit_cost_decimal
+            else:
+                pieces_added = qty_decimal
+                per_piece_cost = unit_cost_decimal
+
+            # Update product stock and pricing
             prod = self.product
             # Ensure product.stock_quantity is Decimal
             try:
@@ -283,23 +334,27 @@ class PurchaseItem(models.Model):
                 try:
                     prod.price = Decimal(str(self.selling_price))
                 except (InvalidOperation, TypeError):
-                    prod.price = prod.price
+                    pass  # Keep existing price if conversion fails
+            
             prod.save()
+
+            # Calculate profit margin percent if selling_price available and cost > 0
+            if self.selling_price is not None and per_piece_cost and Decimal(per_piece_cost) > 0:
+                try:
+                    selling_decimal = Decimal(str(self.selling_price))
+                    margin = (selling_decimal - per_piece_cost) / per_piece_cost * Decimal('100')
+                    self.profit_margin_percent = margin.quantize(Decimal('0.01'))
+                except Exception:
+                    self.profit_margin_percent = None
+
+            # Mark as added to stock
             self.added_to_stock = True
-            update_product = True
-
-        # Calculate profit margin percent if selling_price available and cost > 0
-        if self.selling_price is not None and per_piece_cost and Decimal(per_piece_cost) > 0:
-            try:
-                selling_decimal = Decimal(str(self.selling_price))
-                margin = (selling_decimal - per_piece_cost) / per_piece_cost * Decimal('100')
-                # store rounded to 2 decimal places
-                # Convert to float for storage in DecimalField if desired, but Decimal is fine
-                self.profit_margin_percent = margin.quantize(Decimal('0.01'))
-            except Exception:
-                self.profit_margin_percent = None
-
-        super(PurchaseItem, self).save(*args, **kwargs)
+            # Use update to avoid recursive save
+            PurchaseItem.objects.filter(id=self.id).update(added_to_stock=True)
+            
+        except Exception as e:
+            # Log error but don't break the application
+            print(f"Error updating product stock for {self.product.name}: {e}")
 
 # New model for recording payments against utang
 class Payment(models.Model):
@@ -317,3 +372,36 @@ class Payment(models.Model):
 
     class Meta:
         db_table = 'payments'
+
+    def __str__(self):
+        return f"Payment #{self.id} - {self.amount}"
+
+class AuditLog(models.Model):
+    ACTION_CHOICES = [
+        ('SALE_CREATED', 'Sale Created'),
+        ('SALE_MODIFIED', 'Sale Modified'),
+        ('SALE_VOIDED', 'Sale Voided'),
+        ('USER_LOGIN', 'User Login'),
+        ('USER_LOGOUT', 'User Logout'),
+        ('ROLE_CHANGED', 'Role Changed'),
+        ('INVENTORY_UPDATE', 'Inventory Updated'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='audit_logs')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    model = models.CharField(max_length=50)  # Which model was affected
+    object_id = models.PositiveIntegerField(null=True, blank=True)  # ID of affected object
+    timestamp = models.DateTimeField(auto_now_add=True)
+    details = models.TextField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['action', 'timestamp']),
+        ]
+        ordering = ['-timestamp']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.action} - {self.timestamp}"
+    

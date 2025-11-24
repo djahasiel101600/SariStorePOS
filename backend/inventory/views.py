@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as BaseTokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q, F, Avg
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
@@ -13,6 +13,8 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth.models import User
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment, UNIT_TYPES, PRICING_MODELS
 from .serializers import *
+from .permissions import RoleRequiredPermission
+from .decorators import role_required
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils.text import slugify
@@ -20,6 +22,8 @@ import requests
 import os
 import csv
 import io
+from .models import Sale, AuditLog
+from django.http.response import JsonResponse
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).order_by('name')
@@ -98,6 +102,25 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
 
 class SaleViewSet(viewsets.ModelViewSet):
+    permission_classes = [RoleRequiredPermission]
+
+    def get_permissions(self):
+        """
+        Dynamically set allowed_roles based on action
+        """
+        if self.action == 'create':
+            allowed_roles = ['admin', 'manager', 'cashier']
+        elif self.action in ['update', 'partial_update']:
+            allowed_roles = ['admin', 'manager']
+        elif self.action == 'destroy':
+            allowed_roles = ['admin']
+        else:  # list, retrieve
+            allowed_roles = ['admin', 'manager', 'cashier', 'inventory_manager']
+        
+        # Return instances with the allowed_roles
+        return [RoleRequiredPermission(allowed_roles)]
+
+
     queryset = Sale.objects.all().order_by('-date_created')
     serializer_class = SaleSerializer
     
@@ -106,6 +129,16 @@ class SaleViewSet(viewsets.ModelViewSet):
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
+
+            # Save with cashier - handle the case where field might not exist yet
+            try:
+                sale = serializer.save(cashier=request.user)
+            except Exception as e:
+                # If cashier field doesn't exist yet, save without it
+                if 'cashier' in str(e):
+                    sale = serializer.save()
+                else:
+                    raise
             
             # Calculate total amount from items
             items_data = request.data.get('items', [])
@@ -150,7 +183,7 @@ class SaleViewSet(viewsets.ModelViewSet):
 
             serializer = self.get_serializer(data=sale_data)
             serializer.is_valid(raise_exception=True)
-            sale = serializer.save()
+            sale = serializer.save(cashier=request.user)
             
             # Create sale items and update stock
             for item_data in sale_items:
@@ -172,8 +205,18 @@ class SaleViewSet(viewsets.ModelViewSet):
                 customer.outstanding_balance = (customer.outstanding_balance or 0) + Decimal(str(total_amount))
                 customer.last_utang_date = timezone.now()
                 customer.save(update_fields=['outstanding_balance', 'last_utang_date'])
-            
-            return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
+
+            # Log the sale for accountability
+            AuditLog.objects.create(
+                user=request.user,
+                action='SALE_CREATED',
+                model='Sale',
+                object_id=sale.id,
+                details=f'Sale #{sale.id} created - Total: ${sale.total_amount} by {request.user.username}'
+            )
+
+            headers = self.get_success_headers(serializer.data)
+            return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED, headers=headers)
             
         except Product.DoesNotExist:
             return Response({'error': 'Product not found'}, status=status.HTTP_400_BAD_REQUEST)
@@ -427,6 +470,8 @@ def download_image(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@role_required(['admin', 'manager', 'inventory_manager'])
 def bulk_import_products(request):
     """
     Bulk import products from CSV file.
@@ -783,3 +828,28 @@ def logout(request):
         return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
+    
+@role_required(['admin', 'manager'])
+def sales_performance_report(request):
+    """Report showing sales per cashier"""
+    days = int(request.GET.get('days', 30))
+    start_date = timezone.now() - timedelta(days=days)
+    
+    sales_data = Sale.objects.filter(
+        sale_date__gte=start_date
+    ).values(
+        'cashier__username',
+        'cashier__first_name',
+        'cashier__last_name',
+        'cashier__profile__role'
+    ).annotate(
+        total_sales=Count('id'),
+        total_revenue=Sum('total_amount'),
+        average_sale=Avg('total_amount')
+    ).order_by('-total_revenue')
+    
+    return JsonResponse({
+        'period_days': days,
+        'start_date': start_date,
+        'data': list(sales_data)
+    })
