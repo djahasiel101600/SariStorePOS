@@ -26,6 +26,7 @@ import csv
 import io
 from .models import Sale, AuditLog
 from django.http.response import JsonResponse
+from .websocket_utils import broadcast_sales_update, broadcast_inventory_update, broadcast_shift_update, broadcast_dashboard_update
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).order_by('name')
@@ -52,6 +53,15 @@ class ProductViewSet(viewsets.ModelViewSet):
             # Attach saved file path to image field
             instance.image.name = existing_image_path
             instance.save(update_fields=['image'])
+        
+        # Broadcast inventory update
+        try:
+            broadcast_inventory_update({
+                'action': 'created',
+                'product': ProductSerializer(instance).data
+            })
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
@@ -66,6 +76,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         if existing_image_path and not instance.image:
             instance.image.name = existing_image_path
             instance.save(update_fields=['image'])
+        
+        # Broadcast inventory update
+        try:
+            broadcast_inventory_update({
+                'action': 'updated',
+                'product': ProductSerializer(instance).data
+            })
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
 
         return Response(self.get_serializer(instance).data)
     
@@ -234,6 +253,19 @@ class SaleViewSet(viewsets.ModelViewSet):
                 object_id=sale.id,
                 details=f'Sale #{sale.id} created - Total: ${sale.total_amount} by {request.user.username}'
             )
+
+            # Broadcast sale update via WebSocket
+            try:
+                sale_data = self.get_serializer(sale).data
+                broadcast_sales_update({
+                    'action': 'created',
+                    'sale': sale_data,
+                    'cashier': request.user.username
+                })
+                # Also update dashboard
+                broadcast_dashboard_update({'action': 'sale_created'})
+            except Exception as e:
+                print(f"WebSocket broadcast error: {e}")
 
             headers = self.get_success_headers(serializer.data)
             return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED, headers=headers)
@@ -1140,6 +1172,15 @@ class ShiftViewSet(viewsets.ModelViewSet):
             status='open'
         )
         
+        # Broadcast shift update
+        try:
+            broadcast_shift_update({
+                'action': 'started',
+                'shift': ShiftSerializer(shift).data
+            })
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
+        
         return Response(ShiftSerializer(shift).data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['post'], url_path='end')
@@ -1168,6 +1209,15 @@ class ShiftViewSet(viewsets.ModelViewSet):
         shift.end_time = timezone.now()
         shift.status = 'closed'
         shift.save()
+        
+        # Broadcast shift update
+        try:
+            broadcast_shift_update({
+                'action': 'ended',
+                'shift': ShiftSerializer(shift).data
+            })
+        except Exception as e:
+            print(f"WebSocket broadcast error: {e}")
         
         return Response(ShiftSerializer(shift).data)
     

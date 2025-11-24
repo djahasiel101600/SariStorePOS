@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { WebSocketProvider } from "./components/WebSocketProvider";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
@@ -105,8 +106,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <AppRoutes />
-        <Toaster position="top-right" expand={true} richColors closeButton />
+        <WebSocketProvider>
+          <AppRoutes />
+          <Toaster position="top-right" expand={true} richColors closeButton />
+        </WebSocketProvider>
       </Router>
     </QueryClientProvider>
   );
