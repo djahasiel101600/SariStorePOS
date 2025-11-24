@@ -122,4 +122,41 @@ export interface CreateSaleData {
   }>;
 }
 
+// User and Shift types for admin
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_staff: boolean;
+  is_active: boolean;
+  date_joined: string;
+}
+
+export interface Shift {
+  id: number;
+  user: number;
+  user_name: string;
+  start_time: string;
+  end_time: string | null;
+  opening_cash: number;
+  closing_cash: number | null;
+  expected_cash: number | null;
+  cash_difference: number | null;
+  sales_count: number;
+  total_sales: number;
+  notes: string;
+}
+
+export interface EmployeePerformance {
+  user_id: number;
+  user_name: string;
+  total_sales: number;
+  total_revenue: number;
+  shift_count: number;
+  avg_sale: number;
+  last_shift: string | null;
+}
+
 // Removed duplicate Customer interface

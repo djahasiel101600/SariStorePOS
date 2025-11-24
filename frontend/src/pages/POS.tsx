@@ -1,17 +1,32 @@
 // src/pages/POS.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { usePOS } from "@/hooks/use-pos";
-import { useProductSearch, useCreateSale, useAllProducts } from "@/hooks/api";
+import {
+  useProductSearch,
+  useCreateSale,
+  useAllProducts,
+  useMyShift,
+  useStartShift,
+  useEndShift,
+} from "@/hooks/api";
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { Product } from "@/types";
+import { api } from "@/lib/api";
 import CustomerSearch from "@/components/pos/CustomerSearch";
 import PaymentMethodSelector from "@/components/pos/PaymentMethodSelector";
 import CashTender from "@/components/pos/CashTendered";
 import ScannerDialog from "@/components/pos/ScannerDialog";
 import { MobileCartDrawer } from "@/components/pos/MobileCartDrawer";
 import { FloatingActionButton } from "@/components/pos/FloatingActionButton";
+import { QuickCustomerDialog } from "@/components/pos/QuickCustomerDialog";
+import { ReceiptDialog } from "@/components/pos/ReceiptDialog";
+import { RecentSalesDialog } from "@/components/pos/RecentSalesDialog";
+import {
+  StartShiftDialog,
+  EndShiftDialog,
+} from "@/components/pos/ShiftManagementDialogs";
 import {
   Search,
   Plus,
@@ -21,6 +36,11 @@ import {
   User,
   Barcode,
   Loader2,
+  Volume2,
+  VolumeX,
+  History,
+  UserPlus,
+  ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,9 +77,27 @@ const POS: React.FC = () => {
   const createSaleMutation = useCreateSale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { data: activeShift } = useMyShift();
+  const startShiftMutation = useStartShift();
+  const endShiftMutation = useEndShift();
+  const [showStartShift, setShowStartShift] = useState(false);
+  const [showEndShift, setShowEndShift] = useState(false);
   const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [recentProducts, setRecentProducts] = useState<Product[]>([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem("pos-sound-enabled") !== "false";
+  });
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [lastSale, setLastSale] = useState<any>(null);
+  const [showQuickCustomer, setShowQuickCustomer] = useState(false);
+  const [showRecentSales, setShowRecentSales] = useState(false);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [batchScanMode, setBatchScanMode] = useState(false);
+  const [batchScans, setBatchScans] = useState<string[]>([]);
 
   const categories = useMemo(() => {
     const arr = Array.isArray(allProducts) ? allProducts : [];
@@ -85,6 +123,19 @@ const POS: React.FC = () => {
     }
   });
 
+  useHotkeys("escape", () => {
+    if (searchQuery) {
+      setSearchQuery("");
+    }
+  });
+
+  useHotkeys("ctrl+shift+c", (e) => {
+    e.preventDefault();
+    if (cart.length > 0 && !showClearConfirm) {
+      setShowClearConfirm(true);
+    }
+  });
+
   // Auto-add to cart if a scan yields exactly 1 matching product
   useEffect(() => {
     if (!searchQuery) return;
@@ -105,9 +156,117 @@ const POS: React.FC = () => {
     setSearchQuery("");
   }, [searchQuery, searchResults]);
 
+  // Online/Offline detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      toast.success("Connection restored");
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      toast.error("Connection lost - working offline");
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Load recent sales
+  useEffect(() => {
+    const loadRecentSales = async () => {
+      try {
+        const { data } = await api.get("/sales/", {
+          params: { limit: 10, ordering: "-created_at" },
+        });
+        setRecentSales(Array.isArray(data.results) ? data.results : data);
+      } catch (err) {
+        console.error("Failed to load recent sales", err);
+      }
+    };
+    if (showRecentSales) {
+      loadRecentSales();
+    }
+  }, [showRecentSales]);
+
+  // Sound persistence
+  useEffect(() => {
+    localStorage.setItem("pos-sound-enabled", soundEnabled.toString());
+  }, [soundEnabled]);
+
+  const handleStartShift = async (data: {
+    opening_cash: number;
+    notes?: string;
+  }) => {
+    try {
+      await startShiftMutation.mutateAsync({
+        ...data,
+        terminal_id: "terminal-1",
+      });
+      toast.success("Shift started successfully");
+    } catch (err: any) {
+      console.error("Start shift error", err);
+      toast.error(err.response?.data?.error || "Failed to start shift");
+      throw err;
+    }
+  };
+
+  const handleEndShift = async (data: {
+    closing_cash: number;
+    notes?: string;
+  }) => {
+    if (!activeShift) return;
+    try {
+      await endShiftMutation.mutateAsync({ shiftId: activeShift.id, ...data });
+      toast.success("Shift ended successfully");
+    } catch (err: any) {
+      console.error("End shift error", err);
+      toast.error(err.response?.data?.error || "Failed to end shift");
+      throw err;
+    }
+  };
+
+  const playSound = (type: "success" | "error" | "scan") => {
+    if (!soundEnabled) return;
+    // Use different frequencies for different sounds
+    const freq = type === "success" ? 800 : type === "error" ? 400 : 1000;
+    const duration = type === "error" ? 200 : 100;
+
+    const audioContext = new (window.AudioContext ||
+      (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = freq;
+    oscillator.type = "sine";
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + duration / 1000
+    );
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration / 1000);
+  };
+
   const handleAddToCart = (product: Product) => {
     const defaultQuantity = product.unit_type === "piece" ? 1 : 0.1;
     addToCart(product, defaultQuantity);
+    playSound("success");
+
+    // Track recent products (max 6)
+    setRecentProducts((prev) => {
+      const filtered = prev.filter((p) => p.id !== product.id);
+      return [product, ...filtered].slice(0, 6);
+    });
 
     if (product.pricing_model === "variable") {
       toast.info(
@@ -117,13 +276,44 @@ const POS: React.FC = () => {
       toast.success(`Added ${product.name} to cart`);
     }
     setSearchQuery("");
+
+    // Auto-focus search for quick consecutive additions
+    setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
   const handleBarcodeSearch = (barcode: string) => {
     console.log("Scanned barcode:", barcode);
+    playSound("scan");
     setScannedBarcodes((prev) => [...prev, barcode]);
-    setSearchQuery(barcode);
-    setIsScannerOpen(false);
+
+    if (batchScanMode) {
+      setBatchScans((prev) => [...prev, barcode]);
+      toast.info(`Batch: ${batchScans.length + 1} items scanned`);
+    } else {
+      setSearchQuery(barcode);
+      setIsScannerOpen(false);
+    }
+  };
+
+  const processBatchScans = () => {
+    batchScans.forEach((barcode) => {
+      setSearchQuery(barcode);
+    });
+    setBatchScans([]);
+    setBatchScanMode(false);
+    toast.success(`Added ${batchScans.length} items from batch`);
+  };
+
+  const handleClearCart = () => {
+    if (showClearConfirm) {
+      clearCart();
+      setShowClearConfirm(false);
+      toast.success("Cart cleared");
+      searchInputRef.current?.focus();
+    } else {
+      setShowClearConfirm(true);
+      setTimeout(() => setShowClearConfirm(false), 3000);
+    }
   };
 
   const handleCheckout = async () => {
@@ -158,7 +348,24 @@ const POS: React.FC = () => {
         })),
       };
 
-      await createSaleMutation.mutateAsync(saleData);
+      const response = await createSaleMutation.mutateAsync(saleData);
+
+      playSound("success");
+
+      // Prepare receipt data
+      const receiptData = {
+        items: cart,
+        total: totalAmount,
+        paymentMethod,
+        cashTendered: paymentMethod === "cash" ? cashTendered : undefined,
+        changeDue:
+          paymentMethod === "cash" ? cashTendered - totalAmount : undefined,
+        customer,
+        timestamp: new Date(),
+        receiptNumber: response?.id?.toString() || Date.now().toString(),
+      };
+      setLastSale(receiptData);
+      setShowReceipt(true);
 
       if (paymentMethod === "utang") {
         toast.success(
@@ -173,6 +380,7 @@ const POS: React.FC = () => {
       setPaymentMethod("cash");
       setIsCartOpen(false);
     } catch (error: any) {
+      playSound("error");
       console.error("Checkout error details:", error.response?.data);
       toast.error(
         `Failed to process ${paymentMethod === "utang" ? "utang" : "sale"}`
@@ -200,147 +408,206 @@ const POS: React.FC = () => {
                 key={item.product.id}
                 className="flex flex-col gap-3 p-4 border rounded-lg bg-white"
               >
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-base truncate">
-                    {item.product.name}
-                  </h4>
-                  <div className="flex items-center gap-2 flex-wrap mt-1">
-                    <p className="text-green-600 font-semibold">
-                      {formatCurrency(item.unitPrice)}/{item.product.unit_type}
-                    </p>
-                    {item.requestedAmount && (
-                      <span className="text-sm text-gray-500">
-                        (Requested: {formatCurrency(item.requestedAmount)})
-                      </span>
-                    )}
-                  </div>
-
-                  {item.product.pricing_model === "variable" && (
-                    <div className="mt-2 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-600 min-w-20">
-                          Unit Price:
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={
-                            Number.isFinite(item.unitPrice) ? item.unitPrice : 0
-                          }
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            updateUnitPrice(
-                              item.product.id,
-                              isNaN(val) ? 0 : val
-                            );
-                          }}
-                          className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
-                          disabled={isProcessing}
-                          inputMode="decimal"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-600 min-w-20">
-                          Amount:
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.requestedAmount ?? ""}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            updateRequestedAmount(
-                              item.product.id,
-                              isNaN(val) ? 0 : val
-                            );
-                          }}
-                          placeholder="₱ amount"
-                          className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
-                          disabled={isProcessing}
-                          inputMode="decimal"
-                        />
-                      </div>
+                <div className="flex gap-3">
+                  {/* Product Image */}
+                  {item.product.image ? (
+                    <img
+                      src={item.product.image}
+                      alt={item.product.name}
+                      className="h-16 w-16 object-cover rounded border shrink-0"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 bg-gray-100 rounded border flex items-center justify-center shrink-0">
+                      <ImageIcon className="h-8 w-8 text-gray-400" />
                     </div>
                   )}
 
-                  <p className="text-sm text-gray-500 mt-2">
-                    Total: {formatCurrency(item.unitPrice * item.quantity)}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-base truncate">
+                      {item.product.name}
+                    </h4>
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      <p className="text-green-600 font-semibold">
+                        {formatCurrency(item.unitPrice)}/
+                        {item.product.unit_type}
+                      </p>
+                      {item.requestedAmount && (
+                        <span className="text-sm text-gray-500">
+                          (Requested: {formatCurrency(item.requestedAmount)})
+                        </span>
+                      )}
+                    </div>
+
+                    {item.product.pricing_model === "variable" && (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-600 min-w-20">
+                            Unit Price:
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              Number.isFinite(item.unitPrice)
+                                ? item.unitPrice
+                                : 0
+                            }
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              updateUnitPrice(
+                                item.product.id,
+                                isNaN(val) ? 0 : val
+                              );
+                            }}
+                            className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
+                            disabled={isProcessing}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-600 min-w-20">
+                            Amount:
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.requestedAmount ?? ""}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              updateRequestedAmount(
+                                item.product.id,
+                                isNaN(val) ? 0 : val
+                              );
+                            }}
+                            placeholder="₱ amount"
+                            className="flex-1 text-center font-medium border rounded-lg px-3 py-2 text-base"
+                            disabled={isProcessing}
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-sm text-gray-500 mt-2">
+                      Total: {formatCurrency(item.unitPrice * item.quantity)}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Quantity Controls - Larger touch targets */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10" // Larger touch target
-                      onClick={() => {
-                        const newQty = Math.max(
-                          0.001,
-                          item.quantity -
-                            (item.product.unit_type === "piece" ? 1 : 0.1)
-                        );
-                        updateQuantity(
-                          item.product.id,
-                          parseFloat(newQty.toFixed(3))
-                        );
-                      }}
-                      disabled={isProcessing}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-
-                    <input
-                      type="number"
-                      step={item.product.unit_type === "piece" ? "1" : "0.001"}
-                      min="0.001"
-                      value={item.quantity}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value) || 0.001;
-                        updateQuantity(item.product.id, value);
-                      }}
-                      className="w-20 text-center font-medium border rounded-lg px-2 py-2 text-base"
-                      disabled={isProcessing}
-                      inputMode="decimal"
-                    />
-
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10" // Larger touch target
-                      onClick={() => {
-                        const newQty =
-                          item.quantity +
-                          (item.product.unit_type === "piece" ? 1 : 0.1);
-                        if (newQty <= item.product.stock_quantity) {
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10" // Larger touch target
+                        onClick={() => {
+                          const newQty = Math.max(
+                            0.001,
+                            item.quantity -
+                              (item.product.unit_type === "piece" ? 1 : 0.1)
+                          );
                           updateQuantity(
                             item.product.id,
                             parseFloat(newQty.toFixed(3))
                           );
+                        }}
+                        disabled={isProcessing}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+
+                      <input
+                        type="number"
+                        step={
+                          item.product.unit_type === "piece" ? "1" : "0.001"
                         }
-                      }}
-                      disabled={
-                        isProcessing ||
-                        item.quantity >= item.product.stock_quantity
-                      }
+                        min="0.001"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0.001;
+                          updateQuantity(item.product.id, value);
+                        }}
+                        className="w-20 text-center font-medium border rounded-lg px-2 py-2 text-base"
+                        disabled={isProcessing}
+                        inputMode="decimal"
+                      />
+
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10" // Larger touch target
+                        onClick={() => {
+                          const newQty =
+                            item.quantity +
+                            (item.product.unit_type === "piece" ? 1 : 0.1);
+                          if (newQty <= item.product.stock_quantity) {
+                            updateQuantity(
+                              item.product.id,
+                              parseFloat(newQty.toFixed(3))
+                            );
+                          }
+                        }}
+                        disabled={
+                          isProcessing ||
+                          item.quantity >= item.product.stock_quantity
+                        }
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 text-red-500 hover:text-red-700" // Larger touch target
+                      onClick={() => removeFromCart(item.product.id)}
+                      disabled={isProcessing}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 text-red-500 hover:text-red-700" // Larger touch target
-                    onClick={() => removeFromCart(item.product.id)}
-                    disabled={isProcessing}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {/* Quick add buttons for pieces */}
+                  {item.product.unit_type === "piece" && (
+                    <div className="flex gap-1">
+                      {[5, 10, 20].map((qty) => (
+                        <Button
+                          key={qty}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs flex-1"
+                          onClick={() => {
+                            const newQty = item.quantity + qty;
+                            if (newQty <= item.product.stock_quantity) {
+                              updateQuantity(item.product.id, newQty);
+                            } else {
+                              toast.warning(
+                                `Only ${item.product.stock_quantity} available`
+                              );
+                            }
+                          }}
+                          disabled={
+                            isProcessing ||
+                            item.quantity + qty > item.product.stock_quantity
+                          }
+                        >
+                          +{qty}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                {/* Stock warning */}
+                {item.product.stock_quantity < 10 && (
+                  <div className="text-xs text-amber-600 mt-1">
+                    ⚠️ Only {item.product.stock_quantity} left in stock
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -373,11 +640,18 @@ const POS: React.FC = () => {
               </div>
             )}
 
+            {!activeShift && (
+              <div className="text-red-600 text-sm text-center">
+                ⚠️ No active shift. Please start a shift to enable checkout.
+              </div>
+            )}
+
             <Button
               className="w-full h-12 text-lg"
               onClick={handleCheckout}
               disabled={
                 isProcessing ||
+                !activeShift ||
                 cart.length === 0 ||
                 (paymentMethod === "cash" && cashTendered < cartTotal) ||
                 (paymentMethod === "utang" && customer === null)
@@ -424,8 +698,8 @@ const POS: React.FC = () => {
 
                 <ScannerDialog
                   onScan={handleBarcodeSearch}
-                  // open={isScannerOpen}
-                  // onOpenChange={setIsScannerOpen}
+                  open={isScannerOpen}
+                  onOpenChange={setIsScannerOpen}
                   trigger={
                     <Button
                       variant="outline"
@@ -445,6 +719,48 @@ const POS: React.FC = () => {
               </div>
 
               {/* Scanned Items */}
+              {/* Offline indicator */}
+              {isOffline && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="text-sm text-amber-800 flex items-center gap-2">
+                    <span className="animate-pulse">⚠️</span>
+                    Working offline - changes will sync when connection is
+                    restored
+                  </div>
+                </div>
+              )}
+
+              {/* Batch scan mode */}
+              {batchScanMode && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-purple-800">
+                      Batch Mode: {batchScans.length} items scanned
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={processBatchScans}
+                        disabled={batchScans.length === 0}
+                      >
+                        Add All
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setBatchScanMode(false);
+                          setBatchScans([]);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {scannedBarcodes.length > 0 && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-blue-800">
@@ -474,6 +790,65 @@ const POS: React.FC = () => {
                   </span>
                 </div>
               )}
+              {/* Quick Actions */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  title={soundEnabled ? "Disable sound" : "Enable sound"}
+                >
+                  {soundEnabled ? (
+                    <Volume2 className="h-4 w-4" />
+                  ) : (
+                    <VolumeX className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowRecentSales(true)}
+                  title="View recent sales"
+                >
+                  <History className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowQuickCustomer(true)}
+                  title="Quick add customer"
+                >
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Shift controls */}
+              <div className="flex items-center gap-2">
+                {activeShift ? (
+                  <>
+                    <div className="text-sm text-gray-600">
+                      Shift active •{" "}
+                      {new Date(activeShift.start_time).toLocaleString()}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowEndShift(true)}
+                      disabled={isProcessing}
+                    >
+                      End Shift
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowStartShift(true)}
+                    disabled={startShiftMutation.isPending}
+                  >
+                    Start Shift
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -519,6 +894,31 @@ const POS: React.FC = () => {
                       Clear
                     </Button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Recent Products */}
+            {!searchQuery && recentProducts.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">
+                  🕒 Recent Products:
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {recentProducts.map((product) => (
+                    <button
+                      key={product.id}
+                      onClick={() => handleAddToCart(product)}
+                      className="text-left p-2 border rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 active:bg-gray-100"
+                    >
+                      <div className="text-sm font-medium truncate">
+                        {product.name}
+                      </div>
+                      <div className="text-xs text-green-600 font-semibold">
+                        {formatCurrency(product.price || 0)}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -588,12 +988,12 @@ const POS: React.FC = () => {
               Shopping Cart
               {cart.length > 0 && (
                 <Button
-                  variant="outline"
+                  variant={showClearConfirm ? "destructive" : "outline"}
                   size="sm"
-                  onClick={clearCart}
+                  onClick={handleClearCart}
                   disabled={isProcessing}
                 >
-                  Clear
+                  {showClearConfirm ? "Confirm Clear?" : "Clear"}
                 </Button>
               )}
             </CardTitle>
@@ -636,6 +1036,7 @@ const POS: React.FC = () => {
                 onClick={handleCheckout}
                 disabled={
                   isProcessing ||
+                  !activeShift ||
                   cart.length === 0 ||
                   (paymentMethod === "cash" && cashTendered < cartTotal) ||
                   (paymentMethod === "utang" && customer === null)
@@ -662,6 +1063,43 @@ const POS: React.FC = () => {
         cartItemCount={cartItemCount}
         onCartClick={() => setIsCartOpen(true)}
         onScanClick={() => setIsScannerOpen(true)}
+      />
+      {/* Quick Customer Dialog */}
+      <QuickCustomerDialog
+        open={showQuickCustomer}
+        onOpenChange={setShowQuickCustomer}
+        onCustomerCreated={(newCustomer) => {
+          // Optionally set as current customer
+          toast.success(`Customer ${newCustomer.name} created!`);
+        }}
+      />
+      {/* Receipt Dialog */}
+      {lastSale && (
+        <ReceiptDialog
+          open={showReceipt}
+          onOpenChange={setShowReceipt}
+          saleData={lastSale}
+        />
+      )}
+      {/* Recent Sales Dialog */}
+      <RecentSalesDialog
+        open={showRecentSales}
+        onOpenChange={setShowRecentSales}
+        sales={recentSales}
+      />
+      {/* Shift Management Dialogs */}
+      <StartShiftDialog
+        open={showStartShift}
+        onClose={() => setShowStartShift(false)}
+        onStart={handleStartShift}
+        isLoading={startShiftMutation.isPending}
+      />
+      <EndShiftDialog
+        open={showEndShift}
+        onClose={() => setShowEndShift(false)}
+        onEnd={handleEndShift}
+        shift={activeShift || null}
+        isLoading={endShiftMutation.isPending}
       />
     </div>
   );

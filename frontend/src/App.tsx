@@ -1,5 +1,10 @@
 // src/App.tsx
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import Layout from "./components/layout/Layout";
@@ -10,6 +15,7 @@ import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Customers from "./pages/Customers";
 import Sales from "./pages/Sales";
+import Admin from "./pages/Admin";
 import { useAuthStore } from "./store/authStore";
 
 const queryClient = new QueryClient({
@@ -26,7 +32,10 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+      />
       <Route
         path="/"
         element={
@@ -73,6 +82,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Sales />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <Layout>
+              <Admin />
             </Layout>
           </ProtectedRoute>
         }

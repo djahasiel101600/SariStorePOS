@@ -141,38 +141,37 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
       formData.append("download_images", downloadImages.toString());
       formData.append("preview_only", "true");
 
-      const response = await fetch("/api/bulk-import-products/", {
-        method: "POST",
-        body: formData,
-      });
+      // Use axios-based mutation so auth headers are included
+      const data = await bulkImportMutation.mutateAsync(formData);
 
-      const data: PreviewResponse = await response.json();
+      const previewData = data as PreviewResponse;
 
-      if (!response.ok) {
-        if (data.errors && data.errors.length > 0) {
-          // Show validation errors
-          const errorMessages = data.errors
+      if (previewData && previewData.valid === false) {
+        if (previewData.errors && previewData.errors.length > 0) {
+          const errorMessages = previewData.errors
             .slice(0, 5)
             .map((err) => `Row ${err.row}: ${err.errors.join(", ")}`)
             .join("\n");
           toast.error(
             `Validation failed:\n${errorMessages}${
-              data.errors.length > 5
-                ? `\n... and ${data.errors.length - 5} more errors`
+              previewData.errors.length > 5
+                ? `\n... and ${previewData.errors.length - 5} more errors`
                 : ""
             }`,
             { duration: 10000 }
           );
         } else {
-          toast.error(data.error || "Failed to preview CSV file");
+          toast.error(
+            (previewData as any).error || "Failed to preview CSV file"
+          );
         }
-        setPreview(data);
+        setPreview(previewData);
         return;
       }
 
-      setPreview(data);
+      setPreview(previewData);
       toast.success(
-        `Preview ready: ${data.total_rows} products will be imported`
+        `Preview ready: ${previewData.total_rows} products will be imported`
       );
     } catch (error: any) {
       console.error("Preview error:", error);
@@ -197,22 +196,19 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
       formData.append("download_images", downloadImages.toString());
       formData.append("preview_only", "false");
 
-      const response = await fetch("/api/bulk-import-products/", {
-        method: "POST",
-        body: formData,
-      });
+      // Use axios-based mutation so auth headers are included
+      const data = await bulkImportMutation.mutateAsync(formData);
+      const importData = data as ImportResponse;
 
-      const data: ImportResponse = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.error || "Failed to import products");
+      if (!importData || (importData as any).success === false) {
+        toast.error((importData as any).error || "Failed to import products");
         return;
       }
 
-      setImportResult(data);
+      setImportResult(importData);
       toast.success(
-        `Successfully imported ${data.imported} products${
-          data.skipped > 0 ? ` (${data.skipped} skipped)` : ""
+        `Successfully imported ${importData.imported} products${
+          importData.skipped > 0 ? ` (${importData.skipped} skipped)` : ""
         }`
       );
 
@@ -458,9 +454,7 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
                           </TableCell>
                           <TableCell>{row.data.stock_quantity}</TableCell>
                           <TableCell>{row.data.category || "-"}</TableCell>
-                          <TableCell>
-                            {row.data.unit_type || "piece"}
-                          </TableCell>
+                          <TableCell>{row.data.unit_type || "piece"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -566,4 +560,3 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
 };
 
 export default BulkImportDialog;
-

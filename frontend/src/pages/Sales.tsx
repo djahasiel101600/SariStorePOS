@@ -145,19 +145,22 @@ const Sales: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Sales History</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Sales History
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
             View and manage your sales transactions
           </p>
         </div>
         <Button
           onClick={handleExport}
           variant="outline"
-          className="whitespace-nowrap"
+          size="sm"
+          className="whitespace-nowrap w-full sm:w-auto"
         >
           <Download className="h-4 w-4 mr-2" />
           Export
@@ -165,99 +168,103 @@ const Sales: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Sales</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
+                  Total Sales
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1 truncate">
                   {formatCurrency(totalSales)}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <Calendar className="h-6 w-6 text-green-600" />
+              <div className="p-2 md:p-3 bg-green-100 rounded-full shrink-0">
+                <Calendar className="h-4 w-4 md:h-6 md:w-6 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
                   Average Sale
                 </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1 truncate">
                   {formatCurrency(averageSale)}
                 </p>
               </div>
-              <div className="p-3 bg-blue-100 rounded-full">
-                <Filter className="h-6 w-6 text-blue-600" />
+              <div className="p-2 md:p-3 bg-blue-100 rounded-full shrink-0">
+                <Filter className="h-4 w-4 md:h-6 md:w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
                   Transactions
                 </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {totalTransactions}
                 </p>
               </div>
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Eye className="h-6 w-6 text-purple-600" />
+              <div className="p-2 md:p-3 bg-purple-100 rounded-full shrink-0">
+                <Eye className="h-4 w-4 md:h-6 md:w-6 text-purple-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className={utangSales.length > 0 ? "border-amber-200" : ""}>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Utang Sales</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
+                  Utang Sales
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {utangSales.length}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-[10px] md:text-xs text-gray-500 mt-1 truncate">
                   {formatCurrency(totalUtang)}
                 </p>
                 {utangSales.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-[10px] md:text-xs text-gray-400 mt-1">
                     {paidUtang} paid, {utangSales.length - paidUtang} unpaid
                   </p>
                 )}
               </div>
-              <div className="p-3 bg-amber-100 rounded-full">
-                <CreditCard className="h-6 w-6 text-amber-600" />
+              <div className="p-2 md:p-3 bg-amber-100 rounded-full shrink-0">
+                <CreditCard className="h-4 w-4 md:h-6 md:w-6 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className={unpaidUtang > 0 ? "border-red-200" : ""}>
-          <CardContent className="p-6">
+          <CardContent className="p-3 md:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
                   Unpaid Utang
                 </p>
-                <p className="text-2xl font-bold text-red-600 mt-1">
+                <p className="text-lg md:text-2xl font-bold text-red-600 mt-1 truncate">
                   {formatCurrency(unpaidUtang)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-[10px] md:text-xs text-gray-500 mt-1">
                   {utangSales.filter((s) => !s.is_fully_paid).length} unpaid
                 </p>
               </div>
-              <div className="p-3 bg-red-100 rounded-full">
-                <AlertCircle className="h-6 w-6 text-red-600" />
+              <div className="p-2 md:p-3 bg-red-100 rounded-full shrink-0">
+                <AlertCircle className="h-4 w-4 md:h-6 md:w-6 text-red-600" />
               </div>
             </div>
           </CardContent>
@@ -266,70 +273,70 @@ const Sales: React.FC = () => {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-4">
+        <CardContent className="p-3 md:p-4">
+          <div className="flex flex-col gap-3 md:gap-4">
             {/* First Row: Search and Date Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 relative">
+            <div className="flex flex-col gap-3">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Search by sale ID or customer name..."
+                  placeholder="Search by sale ID or customer..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-10 md:h-9 text-sm"
                 />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-32"
+                  className="flex-1 sm:w-32 h-10 md:h-9 text-sm"
                 />
                 <Input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-32"
+                  className="flex-1 sm:w-32 h-10 md:h-9 text-sm"
                 />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-10 md:h-9">
+                      <Calendar className="h-4 w-4 mr-2" />
+                      <span className="hidden sm:inline">Quick Date</span>
+                      <span className="sm:hidden">Date</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => handleDateFilter(1)}>
+                      Today
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDateFilter(7)}>
+                      Last 7 Days
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDateFilter(30)}>
+                      Last 30 Days
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setStartDate("");
+                        setEndDate("");
+                      }}
+                    >
+                      All Time
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Quick Date
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => handleDateFilter(1)}>
-                    Today
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDateFilter(7)}>
-                    Last 7 Days
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDateFilter(30)}>
-                    Last 30 Days
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setStartDate("");
-                      setEndDate("");
-                    }}
-                  >
-                    All Time
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
 
             {/* Second Row: Payment Method and Status Filters */}
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">
-                  Payment Method:
+                <span className="text-xs md:text-sm font-medium text-gray-700">
+                  Payment:
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -338,6 +345,7 @@ const Sales: React.FC = () => {
                     paymentMethodFilter === "all" ? "default" : "outline"
                   }
                   size="sm"
+                  className="h-8 px-2 text-xs md:text-sm"
                   onClick={() => {
                     setPaymentMethodFilter("all");
                     setPaymentStatusFilter("all");
@@ -350,6 +358,7 @@ const Sales: React.FC = () => {
                     paymentMethodFilter === "cash" ? "default" : "outline"
                   }
                   size="sm"
+                  className="h-8 px-2 text-xs md:text-sm"
                   onClick={() => {
                     setPaymentMethodFilter("cash");
                     setPaymentStatusFilter("all");
@@ -363,6 +372,7 @@ const Sales: React.FC = () => {
                     paymentMethodFilter === "card" ? "default" : "outline"
                   }
                   size="sm"
+                  className="h-8 px-2 text-xs md:text-sm"
                   onClick={() => {
                     setPaymentMethodFilter("card");
                     setPaymentStatusFilter("all");
@@ -376,13 +386,15 @@ const Sales: React.FC = () => {
                     paymentMethodFilter === "mobile" ? "default" : "outline"
                   }
                   size="sm"
+                  className="h-8 px-2 text-xs md:text-sm"
                   onClick={() => {
                     setPaymentMethodFilter("mobile");
                     setPaymentStatusFilter("all");
                   }}
                 >
                   <Wallet className="h-3 w-3 mr-1" />
-                  Mobile
+                  <span className="hidden sm:inline">Mobile</span>
+                  <span className="sm:hidden">Mob</span>
                 </Button>
                 <Button
                   variant={
@@ -391,8 +403,8 @@ const Sales: React.FC = () => {
                   size="sm"
                   className={
                     paymentMethodFilter === "utang"
-                      ? "bg-amber-600 hover:bg-amber-700"
-                      : ""
+                      ? "bg-amber-600 hover:bg-amber-700 h-8 px-2 text-xs md:text-sm"
+                      : "h-8 px-2 text-xs md:text-sm"
                   }
                   onClick={() => {
                     setPaymentMethodFilter("utang");
@@ -400,23 +412,24 @@ const Sales: React.FC = () => {
                   }}
                 >
                   <AlertCircle className="h-3 w-3 mr-1" />
-                  Utang/Debt
+                  Utang
                 </Button>
               </div>
 
               {/* Payment Status Filter (only show for Utang) */}
               {(paymentMethodFilter === "utang" ||
                 paymentStatusFilter !== "all") && (
-                <div className="flex items-center gap-2 ml-4 pl-4 border-l">
-                  <span className="text-sm font-medium text-gray-700">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 sm:pl-4 sm:border-l">
+                  <span className="text-xs md:text-sm font-medium text-gray-700">
                     Status:
                   </span>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       variant={
                         paymentStatusFilter === "all" ? "default" : "outline"
                       }
                       size="sm"
+                      className="h-8 px-2 text-xs md:text-sm"
                       onClick={() => setPaymentStatusFilter("all")}
                     >
                       All
@@ -428,8 +441,8 @@ const Sales: React.FC = () => {
                       size="sm"
                       className={
                         paymentStatusFilter === "paid"
-                          ? "bg-green-600 hover:bg-green-700"
-                          : ""
+                          ? "bg-green-600 hover:bg-green-700 h-8 px-2 text-xs md:text-sm"
+                          : "h-8 px-2 text-xs md:text-sm"
                       }
                       onClick={() => setPaymentStatusFilter("paid")}
                     >
@@ -443,8 +456,8 @@ const Sales: React.FC = () => {
                       size="sm"
                       className={
                         paymentStatusFilter === "unpaid"
-                          ? "bg-red-600 hover:bg-red-700"
-                          : ""
+                          ? "bg-red-600 hover:bg-red-700 h-8 px-2 text-xs md:text-sm"
+                          : "h-8 px-2 text-xs md:text-sm"
                       }
                       onClick={() => setPaymentStatusFilter("unpaid")}
                     >
@@ -461,40 +474,58 @@ const Sales: React.FC = () => {
 
       {/* Sales Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Sales Transactions</CardTitle>
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">
+            Sales Transactions
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 md:p-6">
           {filteredSales.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>No sales found</p>
-              <p className="text-sm">Try adjusting your filters or search</p>
+              <p className="text-sm md:text-base">No sales found</p>
+              <p className="text-xs md:text-sm">
+                Try adjusting your filters or search
+              </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-4">Sale ID</th>
-                    <th className="text-left py-3 px-4">Customer</th>
-                    <th className="text-left py-3 px-4">Date</th>
-                    <th className="text-left py-3 px-4">Payment Method</th>
-                    <th className="text-left py-3 px-4">Amount</th>
-                    <th className="text-left py-3 px-4">Actions</th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Sale ID
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Customer
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Date
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Payment
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Amount
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSales.map((sale) => (
                     <tr key={sale.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">#{sale.id}</td>
-                      <td className="py-3 px-4">
-                        {sale.customer_name || "Walk-in Customer"}
+                      <td className="py-2 md:py-3 px-2 md:px-4 font-medium text-xs md:text-sm">
+                        #{sale.id}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm truncate max-w-[100px] md:max-w-none">
+                        {sale.customer_name || "Walk-in"}
+                      </td>
+                      <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">
                         {formatDate(sale.date_created)}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
                         <div className="flex flex-col gap-1">
                           <Badge
                             variant={
@@ -502,11 +533,11 @@ const Sales: React.FC = () => {
                                 ? "destructive"
                                 : "outline"
                             }
-                            className="capitalize w-fit"
+                            className="capitalize w-fit text-[10px] md:text-xs"
                           >
                             {sale.payment_method === "utang" ? (
                               <>
-                                <AlertCircle className="h-3 w-3 mr-1" />
+                                <AlertCircle className="h-2 w-2 md:h-3 md:w-3 mr-1" />
                                 Utang
                               </>
                             ) : (
@@ -514,16 +545,18 @@ const Sales: React.FC = () => {
                             )}
                           </Badge>
                           {sale.payment_method === "utang" && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-[10px] md:text-xs text-gray-500">
                               {sale.is_fully_paid ? (
                                 <span className="text-green-600 flex items-center gap-1">
-                                  <CheckCircle2 className="h-3 w-3" />
+                                  <CheckCircle2 className="h-2 w-2 md:h-3 md:w-3" />
                                   Paid
                                 </span>
                               ) : (
                                 <span className="text-red-600 flex items-center gap-1">
-                                  <AlertCircle className="h-3 w-3" />
-                                  Unpaid:{" "}
+                                  <AlertCircle className="h-2 w-2 md:h-3 md:w-3" />
+                                  <span className="hidden md:inline">
+                                    Unpaid:{" "}
+                                  </span>
                                   {formatCurrency(
                                     Number(sale.total_amount) -
                                       (Number(sale.amount_paid) || 0)
@@ -534,27 +567,28 @@ const Sales: React.FC = () => {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
                         <div className="flex flex-col">
-                          <span className="font-semibold text-green-600">
+                          <span className="font-semibold text-green-600 text-xs md:text-sm">
                             {formatCurrency(sale.total_amount)}
                           </span>
                           {sale.payment_method === "utang" &&
                             !sale.is_fully_paid && (
-                              <span className="text-xs text-gray-500">
+                              <span className="text-[10px] md:text-xs text-gray-500">
                                 Paid: {formatCurrency(sale.amount_paid || 0)}
                               </span>
                             )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
                         <Button
                           variant="outline"
                           size="sm"
+                          className="h-7 md:h-8 px-2 text-xs"
                           onClick={() => handleViewDetails(sale)}
                         >
-                          <Eye className="h-3 w-3 mr-1" />
-                          Details
+                          <Eye className="h-3 w-3 md:mr-1" />
+                          <span className="hidden md:inline">Details</span>
                         </Button>
                       </td>
                     </tr>
@@ -568,13 +602,15 @@ const Sales: React.FC = () => {
 
       {/* Sale Details Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>Sale Details #{selectedSale?.id}</DialogTitle>
+            <DialogTitle className="text-base md:text-lg">
+              Sale Details #{selectedSale?.id}
+            </DialogTitle>
           </DialogHeader>
           {selectedSale && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Customer</p>
                   <p>{selectedSale.customer_name || "Walk-in Customer"}</p>
@@ -651,25 +687,37 @@ const Sales: React.FC = () => {
 
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-2">Items</p>
-                <div className="border rounded-lg">
-                  <table className="w-full">
+                <div className="border rounded-lg overflow-x-auto">
+                  <table className="w-full min-w-[400px]">
                     <thead>
                       <tr className="border-b bg-gray-50">
-                        <th className="text-left py-2 px-4">Product</th>
-                        <th className="text-left py-2 px-4">Quantity</th>
-                        <th className="text-left py-2 px-4">Unit Price</th>
-                        <th className="text-left py-2 px-4">Total</th>
+                        <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                          Product
+                        </th>
+                        <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                          Qty
+                        </th>
+                        <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                          Price
+                        </th>
+                        <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                          Total
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedSale.items.map((item) => (
                         <tr key={item.id} className="border-b">
-                          <td className="py-2 px-4">{item.product_name}</td>
-                          <td className="py-2 px-4">{item.quantity}</td>
-                          <td className="py-2 px-4">
+                          <td className="py-2 px-2 md:px-4 text-xs md:text-sm">
+                            {item.product_name}
+                          </td>
+                          <td className="py-2 px-2 md:px-4 text-xs md:text-sm">
+                            {item.quantity}
+                          </td>
+                          <td className="py-2 px-2 md:px-4 text-xs md:text-sm">
                             {formatCurrency(item.unit_price)}
                           </td>
-                          <td className="py-2 px-4 font-medium">
+                          <td className="py-2 px-2 md:px-4 font-medium text-xs md:text-sm">
                             {formatCurrency(item.total_price)}
                           </td>
                         </tr>
@@ -686,14 +734,22 @@ const Sales: React.FC = () => {
                     Payment History
                   </p>
                   {selectedSale.payments && selectedSale.payments.length > 0 ? (
-                    <div className="border rounded-lg">
-                      <table className="w-full">
+                    <div className="border rounded-lg overflow-x-auto">
+                      <table className="w-full min-w-[400px]">
                         <thead>
                           <tr className="border-b bg-gray-50">
-                            <th className="text-left py-2 px-4">Date</th>
-                            <th className="text-left py-2 px-4">Amount</th>
-                            <th className="text-left py-2 px-4">Method</th>
-                            <th className="text-left py-2 px-4">Notes</th>
+                            <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                              Date
+                            </th>
+                            <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                              Amount
+                            </th>
+                            <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                              Method
+                            </th>
+                            <th className="text-left py-2 px-2 md:px-4 text-xs md:text-sm">
+                              Notes
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -705,21 +761,21 @@ const Sales: React.FC = () => {
                             )
                             .map((payment) => (
                               <tr key={payment.id} className="border-b">
-                                <td className="py-2 px-4 text-sm">
+                                <td className="py-2 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">
                                   {formatDate(payment.date_created)}
                                 </td>
-                                <td className="py-2 px-4 font-medium text-green-600">
+                                <td className="py-2 px-2 md:px-4 font-medium text-green-600 text-xs md:text-sm">
                                   {formatCurrency(payment.amount)}
                                 </td>
-                                <td className="py-2 px-4">
+                                <td className="py-2 px-2 md:px-4">
                                   <Badge
                                     variant="outline"
-                                    className="capitalize"
+                                    className="capitalize text-[10px] md:text-xs"
                                   >
                                     {payment.method}
                                   </Badge>
                                 </td>
-                                <td className="py-2 px-4 text-sm text-gray-500">
+                                <td className="py-2 px-2 md:px-4 text-xs md:text-sm text-gray-500 truncate max-w-[100px]">
                                   {payment.notes || "-"}
                                 </td>
                               </tr>
@@ -727,10 +783,13 @@ const Sales: React.FC = () => {
                         </tbody>
                         <tfoot>
                           <tr className="bg-gray-50 font-semibold">
-                            <td className="py-2 px-4" colSpan={3}>
+                            <td
+                              className="py-2 px-2 md:px-4 text-xs md:text-sm"
+                              colSpan={3}
+                            >
                               Total Paid:
                             </td>
-                            <td className="py-2 px-4 text-green-600">
+                            <td className="py-2 px-2 md:px-4 text-green-600 text-xs md:text-sm">
                               {formatCurrency(
                                 selectedSale.payments.reduce(
                                   (sum, p) => sum + Number(p.amount),
@@ -743,7 +802,7 @@ const Sales: React.FC = () => {
                       </table>
                     </div>
                   ) : (
-                    <div className="border rounded-lg p-4 text-center text-gray-500 text-sm">
+                    <div className="border rounded-lg p-4 text-center text-gray-500 text-xs md:text-sm">
                       No payments recorded yet
                     </div>
                   )}

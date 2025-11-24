@@ -81,6 +81,7 @@ import {
   X,
   LogOut,
   User as UserIcon,
+  Settings,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { authService } from "@/services/authService";
@@ -97,6 +98,7 @@ const navigation = [
   { name: "Inventory", href: "/inventory", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Sales", href: "/sales", icon: BarChart3 },
+  { name: "Admin", href: "/admin", icon: Settings },
 ];
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -122,7 +124,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="flex h-screen bg-gray-50">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -142,7 +144,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <h1 className="text-2xl font-bold text-gray-800">
             Sari<span className="text-blue-600">Store</span>POS
           </h1>
-          
+
           {/* Close button for mobile */}
           <button
             onClick={() => setSidebarOpen(false)}
@@ -155,6 +157,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Navigation */}
         <nav className="mt-6 flex-1">
           {navigation.map((item) => {
+            // Hide Admin link for non-admin/non-manager users
+            if (
+              item.name === "Admin" &&
+              user?.role !== "admin" &&
+              user?.role !== "manager"
+            ) {
+              return null;
+            }
+
             const isActive = location.pathname === item.href;
             return (
               <Link
@@ -169,7 +180,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     : "text-gray-600"
                 )}
               >
-                <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
+                <item.icon className="mr-3 h-5 w-5 shrink-0" />
                 <span className="truncate">{item.name}</span>
               </Link>
             );
@@ -188,7 +199,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   ? `${user.first_name} ${user.last_name}`
                   : user?.username || "User"}
               </p>
-              <p className="text-xs text-gray-500 truncate">{user?.email || ""}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.email || ""}
+              </p>
             </div>
           </div>
           <Button
@@ -213,20 +226,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               <Menu className="h-6 w-6" />
             </button>
-            
+
             <h1 className="text-lg font-semibold text-gray-800">
               Sari<span className="text-blue-600">Store</span>POS
             </h1>
-            
+
             {/* Spacer to balance the layout */}
             <div className="w-10" />
           </div>
         </header>
 
         {/* Main content area */}
-        <main className="flex-1 overflow-auto p-4 lg:p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

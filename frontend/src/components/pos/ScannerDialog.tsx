@@ -32,6 +32,10 @@ interface ScannerDialogProps {
   autoCloseAfterScan?: boolean;
   /** If true, open the dialog as soon as the component mounts */
   openOnMount?: boolean;
+  /** Controlled open state */
+  open?: boolean;
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface ScanResult {
@@ -45,8 +49,20 @@ export function ScannerDialog({
   onScannedItems,
   autoCloseAfterScan = false,
   openOnMount = false,
+  open: controlledOpen,
+  onOpenChange,
 }: ScannerDialogProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Use controlled open if provided, otherwise use internal state
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = (value: boolean) => {
+    if (controlledOpen !== undefined) {
+      onOpenChange?.(value);
+    } else {
+      setInternalOpen(value);
+    }
+  };
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scannedItems, setScannedItems] = useState<ScanResult[]>([]);

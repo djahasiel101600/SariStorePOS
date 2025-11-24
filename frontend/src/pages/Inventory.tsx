@@ -433,31 +433,31 @@ const Inventory: React.FC = () => {
 
   // Product Card Component
   const ProductCard = ({ product }: { product: Product }) => (
-    <div className="border rounded-lg p-2 hover:shadow-md transition-shadow bg-white h-full flex flex-col">
+    <div className="border rounded-lg p-3 hover:shadow-md transition-shadow bg-white h-full flex flex-col">
       {/* Product Image and Basic Info */}
-      <div className="flex items-start gap-2 mb-3">
+      <div className="flex items-start gap-2 mb-2">
         {product.image ? (
           <img
             src={product.image}
             alt={product.name}
-            className="h-12 w-12 object-cover rounded shrink-0"
+            className="h-10 w-10 md:h-12 md:w-12 object-cover rounded shrink-0"
           />
         ) : (
-          <div className="h-12 w-12 bg-gray-200 rounded flex items-center justify-center shrink-0">
-            <Package className="h-6 w-6 text-gray-400" />
+          <div className="h-10 w-10 md:h-12 md:w-12 bg-gray-200 rounded flex items-center justify-center shrink-0">
+            <Package className="h-5 w-5 md:h-6 md:w-6 text-gray-400" />
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-sm leading-tight truncate">
+          <h3 className="font-medium text-xs md:text-sm leading-tight line-clamp-2">
             {product.name}
           </h3>
           {product.barcode && (
-            <div className="text-xs text-gray-500 mt-1 truncate">
+            <div className="text-[10px] md:text-xs text-gray-500 mt-1 truncate">
               📊 {product.barcode}
             </div>
           )}
           {product.category && (
-            <div className="text-xs text-gray-500 truncate">
+            <div className="text-[10px] md:text-xs text-gray-500 truncate">
               {product.category}
             </div>
           )}
@@ -465,54 +465,60 @@ const Inventory: React.FC = () => {
       </div>
 
       {/* Price and Stock */}
-      <div className="flex flex-col justify-start items-center mb-3">
-        <div className="font-semibold text-green-600 text-sm">
+      <div className="flex flex-col justify-start items-center mb-2">
+        <div className="font-semibold text-green-600 text-xs md:text-sm">
           {formatCurrency(product.price == null ? 0 : product.price)}
         </div>
-        <div className="text-sm text-gray-600">
+        <div className="text-xs md:text-sm text-gray-600">
           Stock: <span className="font-medium">{product.stock_quantity}</span>
         </div>
       </div>
 
       {/* Status Badge */}
-      <div className="mb-3">
+      <div className="mb-2">
         {product.stock_quantity === 0 ? (
           <Badge
             variant="destructive"
-            className="w-full justify-center text-xs"
+            className="w-full justify-center text-[10px] md:text-xs py-0.5"
           >
             Out of Stock
           </Badge>
         ) : product.needs_restock ? (
-          <Badge variant="secondary" className="w-full justify-center text-xs">
+          <Badge
+            variant="secondary"
+            className="w-full justify-center text-[10px] md:text-xs py-0.5"
+          >
             Low Stock
           </Badge>
         ) : (
-          <Badge variant="default" className="w-full justify-center text-xs">
+          <Badge
+            variant="default"
+            className="w-full justify-center text-[10px] md:text-xs py-0.5"
+          >
             In Stock
           </Badge>
         )}
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-col gap-2 mt-auto">
+      <div className="flex gap-2 mt-auto">
         <Button
           variant="outline"
           size="sm"
           onClick={() => handleEdit(product)}
-          className="h-8 px-2 text-xs"
+          className="h-7 md:h-8 px-2 text-[10px] md:text-xs flex-1"
         >
           <Edit className="h-3 w-3 mr-1" />
-          Edit
+          <span className="hidden sm:inline">Edit</span>
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => setProductToDelete(product)}
-          className="h-8 px-2 text-red-600 hover:text-red-700"
+          className="h-7 md:h-8 px-2 text-red-600 hover:text-red-700 flex-1"
         >
           <Trash2 className="h-3 w-3" />
-          Delete
+          <span className="hidden sm:inline ml-1">Delete</span>
         </Button>
       </div>
     </div>
@@ -540,25 +546,32 @@ const Inventory: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Inventory
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
             Manage your products and stock levels
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             onClick={() => setIsBulkImportOpen(true)}
-            className="whitespace-nowrap"
+            className="flex-1 sm:flex-none whitespace-nowrap text-sm"
+            size="sm"
           >
             <Upload className="h-4 w-4 mr-2" />
             Bulk Import
           </Button>
-          <Button onClick={handleAddProduct} className="whitespace-nowrap">
+          <Button
+            onClick={handleAddProduct}
+            className="flex-1 sm:flex-none whitespace-nowrap text-sm"
+            size="sm"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add Product
           </Button>
@@ -566,78 +579,84 @@ const Inventory: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
+          <CardContent className="p-3 md:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
                   Total Products
                 </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {paginationInfo.count}
                 </p>
               </div>
-              <div className="p-3 bg-blue-100 rounded-full">
-                <Package className="h-6 w-6 text-blue-600" />
+              <div className="p-2 md:p-3 bg-blue-100 rounded-full self-start">
+                <Package className="h-4 w-4 md:h-6 md:w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Low Stock</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+          <CardContent className="p-3 md:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
+                  Low Stock
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {lowStockArray.length}
                 </p>
               </div>
-              <div className="p-3 bg-orange-100 rounded-full">
-                <AlertTriangle className="h-6 w-6 text-orange-600" />
+              <div className="p-2 md:p-3 bg-orange-100 rounded-full self-start">
+                <AlertTriangle className="h-4 w-4 md:h-6 md:w-6 text-orange-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
+          <CardContent className="p-3 md:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
                   Out of Stock
                 </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {outOfStockCount}
                 </p>
               </div>
-              <div className="p-3 bg-red-100 rounded-full">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
+              <div className="p-2 md:p-3 bg-red-100 rounded-full self-start">
+                <AlertTriangle className="h-4 w-4 md:h-6 md:w-6 text-red-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Categories</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+          <CardContent className="p-3 md:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
+                  Categories
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1">
                   {categories.length}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <Package className="h-6 w-6 text-green-600" />
+              <div className="p-2 md:p-3 bg-green-100 rounded-full self-start">
+                <Package className="h-4 w-4 md:h-6 md:w-6 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Worth</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+          <CardContent className="p-3 md:p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs md:text-sm font-medium text-gray-600 truncate">
+                  Worth
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1 truncate">
                   ₱{" "}
                   {allProducts
                     .map(
@@ -646,12 +665,12 @@ const Inventory: React.FC = () => {
                     .reduce((a, b) => a + b, 0)
                     .toLocaleString()}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-[10px] md:text-xs text-gray-500 mt-1 truncate">
                   Based on {allProducts.length} products
                 </p>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <BadgeRussianRuble className="h-6 w-6 text-green-600" />
+              <div className="p-2 md:p-3 bg-green-100 rounded-full self-start">
+                <BadgeRussianRuble className="h-4 w-4 md:h-6 md:w-6 text-green-600" />
               </div>
             </div>
           </CardContent>
@@ -660,17 +679,17 @@ const Inventory: React.FC = () => {
 
       {/* Filters and Search */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 flex gap-2">
+        <CardContent className="p-3 md:p-4">
+          <div className="flex flex-col gap-3 md:gap-4">
+            <div className="flex gap-2">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Search products by name or barcode..."
+                  placeholder="Search products..."
                   value={searchQuery}
                   onChange={handleSearchChange}
                   onBlur={handleSearchBlur}
-                  className="pl-10 text-base sm:text-sm"
+                  className="pl-10 text-sm h-10 md:h-9"
                 />
 
                 {/* Search status indicators */}
@@ -704,14 +723,14 @@ const Inventory: React.FC = () => {
                 {showQuickAddOptions && shouldShowQuickAdd && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50">
                     <div className="p-2">
-                      <div className="text-xs font-medium text-gray-500 px-2 py-1">
+                      <div className="text-[10px] md:text-xs font-medium text-gray-500 px-2 py-1">
                         Quick Add Options
                       </div>
 
                       {hasBarcodeData && barcodeProductData && (
                         <button
                           onClick={() => handleQuickAdd(true)}
-                          className="flex items-center gap-2 w-full p-3 text-left hover:bg-green-50 rounded-md cursor-pointer transition-colors border border-green-200 mb-2 touch-manipulation"
+                          className="flex items-center gap-2 w-full p-2 md:p-3 text-left hover:bg-green-50 rounded-md cursor-pointer transition-colors border border-green-200 mb-2 touch-manipulation"
                           onTouchStart={(e) =>
                             e.currentTarget.classList.add("bg-green-100")
                           }
@@ -719,15 +738,15 @@ const Inventory: React.FC = () => {
                             e.currentTarget.classList.remove("bg-green-100")
                           }
                         >
-                          <Download className="h-4 w-4 text-green-600 shrink-0" />
+                          <Download className="h-3 w-3 md:h-4 md:w-4 text-green-600 shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
+                            <div className="font-medium text-xs md:text-sm truncate">
                               Use product data from barcode
                             </div>
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-[10px] md:text-xs text-gray-500 truncate">
                               Name: {barcodeProductData.product.product_name}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-[10px] md:text-xs text-gray-500">
                               Quantity:{" "}
                               {barcodeProductData.product.product_quantity}
                               {barcodeProductData.product.product_quantity_unit}
@@ -739,7 +758,7 @@ const Inventory: React.FC = () => {
 
                       <button
                         onClick={() => handleQuickAdd(false)}
-                        className="flex items-center gap-2 w-full p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
+                        className="flex items-center gap-2 w-full p-2 md:p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
                         onTouchStart={(e) =>
                           e.currentTarget.classList.add("bg-gray-200")
                         }
@@ -747,14 +766,14 @@ const Inventory: React.FC = () => {
                           e.currentTarget.classList.remove("bg-gray-200")
                         }
                       >
-                        <Tag className="h-4 w-4 text-blue-600 shrink-0" />
+                        <Tag className="h-3 w-3 md:h-4 md:w-4 text-blue-600 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">
+                          <div className="font-medium text-xs md:text-sm truncate">
                             {isBarcodeSearch
                               ? `Create product with name`
                               : `Create product "${searchQuery}"`}
                           </div>
-                          <div className="text-xs text-gray-500 truncate">
+                          <div className="text-[10px] md:text-xs text-gray-500 truncate">
                             {isBarcodeSearch
                               ? `Name: ${searchQuery}`
                               : "Pre-fills product name"}
@@ -765,7 +784,7 @@ const Inventory: React.FC = () => {
                       {isBarcodeSearch && (
                         <button
                           onClick={() => handleQuickAdd(false)}
-                          className="flex items-center gap-2 w-full p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
+                          className="flex items-center gap-2 w-full p-2 md:p-3 text-left hover:bg-gray-100 rounded-md cursor-pointer transition-colors touch-manipulation"
                           onTouchStart={(e) =>
                             e.currentTarget.classList.add("bg-gray-200")
                           }
@@ -773,12 +792,12 @@ const Inventory: React.FC = () => {
                             e.currentTarget.classList.remove("bg-gray-200")
                           }
                         >
-                          <Barcode className="h-4 w-4 text-green-600 shrink-0" />
+                          <Barcode className="h-3 w-3 md:h-4 md:w-4 text-green-600 shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
+                            <div className="font-medium text-xs md:text-sm truncate">
                               Create product with barcode
                             </div>
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-[10px] md:text-xs text-gray-500 truncate">
                               Sets barcode: {searchQuery}
                             </div>
                           </div>
@@ -790,7 +809,7 @@ const Inventory: React.FC = () => {
                         !barcodeLoading && (
                           <button
                             onClick={handleBarcodeLookup}
-                            className="flex items-center gap-2 w-full p-3 text-left hover:bg-blue-50 rounded-md cursor-pointer transition-colors border border-blue-200 touch-manipulation"
+                            className="flex items-center gap-2 w-full p-2 md:p-3 text-left hover:bg-blue-50 rounded-md cursor-pointer transition-colors border border-blue-200 touch-manipulation"
                             onTouchStart={(e) =>
                               e.currentTarget.classList.add("bg-blue-100")
                             }
@@ -798,12 +817,12 @@ const Inventory: React.FC = () => {
                               e.currentTarget.classList.remove("bg-blue-100")
                             }
                           >
-                            <ExternalLink className="h-4 w-4 text-blue-600 shrink-0" />
+                            <ExternalLink className="h-3 w-3 md:h-4 md:w-4 text-blue-600 shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">
+                              <div className="font-medium text-xs md:text-sm truncate">
                                 Look up product information
                               </div>
-                              <div className="text-xs text-gray-500 truncate">
+                              <div className="text-[10px] md:text-xs text-gray-500 truncate">
                                 Fetch product details from barcode database
                               </div>
                             </div>
@@ -822,17 +841,19 @@ const Inventory: React.FC = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    className="whitespace-nowrap text-base sm:text-sm py-2 sm:py-0"
+                    size="sm"
+                    className="whitespace-nowrap h-10 md:h-9 px-3"
                   >
-                    <Camera className="h-4 w-4 mr-2" />
-                    Scan
+                    <Camera className="h-4 w-4 mr-0 md:mr-2" />
+                    <span className="hidden sm:inline">Scan</span>
                   </Button>
                 }
               />
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-2">
+            {/* View Mode Toggle & Filters Row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* View Mode Toggle */}
               <div className="flex border rounded-md">
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
@@ -851,69 +872,84 @@ const Inventory: React.FC = () => {
                   <Grid className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
 
-            {/* Category Filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Category: {categoryFilter === "all" ? "All" : categoryFilter}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setCategoryFilter("all")}>
-                  All Categories
-                </DropdownMenuItem>
-                {categories.map((category) => (
-                  <DropdownMenuItem
-                    key={category}
-                    onClick={() => setCategoryFilter(category)}
+              {/* Category Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-xs md:text-sm"
                   >
-                    {category}
+                    <Filter className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+                    <span className="hidden sm:inline">Category: </span>
+                    <span className="truncate max-w-[60px] sm:max-w-none">
+                      {categoryFilter === "all" ? "All" : categoryFilter}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => setCategoryFilter("all")}>
+                    All Categories
                   </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  {categories.map((category) => (
+                    <DropdownMenuItem
+                      key={category}
+                      onClick={() => setCategoryFilter(category)}
+                    >
+                      {category}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-            {/* Stock Filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Stock:{" "}
-                  {stockFilter === "all"
-                    ? "All"
-                    : stockFilter === "low"
-                      ? "Low Stock"
-                      : stockFilter === "out"
-                        ? "Out of Stock"
-                        : "In Stock"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setStockFilter("all")}>
-                  All Stock
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStockFilter("in")}>
-                  In Stock
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStockFilter("low")}>
-                  Low Stock
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStockFilter("out")}>
-                  Out of Stock
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              {/* Stock Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-xs md:text-sm"
+                  >
+                    <Filter className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+                    <span className="hidden sm:inline">Stock: </span>
+                    <span className="truncate max-w-[60px] sm:max-w-none">
+                      {stockFilter === "all"
+                        ? "All"
+                        : stockFilter === "low"
+                          ? "Low"
+                          : stockFilter === "out"
+                            ? "Out"
+                            : "In"}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => setStockFilter("all")}>
+                    All Stock
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStockFilter("in")}>
+                    In Stock
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStockFilter("low")}>
+                    Low Stock
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStockFilter("out")}>
+                    Out of Stock
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           {/* Barcode API Status */}
           {barcodeError && (
             <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-              <div className="flex items-center gap-2 text-red-700 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Barcode lookup failed: {barcodeError}</span>
+              <div className="flex items-center gap-2 text-red-700 text-xs md:text-sm">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  Barcode lookup failed: {barcodeError}
+                </span>
               </div>
             </div>
           )}
@@ -922,12 +958,12 @@ const Inventory: React.FC = () => {
 
       {/* Products Display */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 md:p-6">
+          <CardTitle className="text-base md:text-lg">
             Products (
             {searchMode ? filteredProducts.length : paginationInfo.count})
             {searchQuery && (
-              <span className="text-sm font-normal text-gray-500 ml-2">
+              <span className="text-xs md:text-sm font-normal text-gray-500 ml-2 block sm:inline mt-1 sm:mt-0">
                 for "{searchQuery}"{searchMode && " (searching all products)"}
               </span>
             )}
@@ -935,8 +971,8 @@ const Inventory: React.FC = () => {
 
           {/* Pagination Controls */}
           {paginationInfo.totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              <div className="text-sm text-gray-600">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="text-xs md:text-sm text-gray-600">
                 Page {currentPage} of {paginationInfo.totalPages}
               </div>
               <div className="flex gap-1">
@@ -945,38 +981,42 @@ const Inventory: React.FC = () => {
                   size="sm"
                   onClick={() => handlePageChange(1)}
                   disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
                 >
-                  <ChevronsLeft className="h-4 w-4" />
+                  <ChevronsLeft className="h-3 w-3 md:h-4 md:w-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-3 w-3 md:h-4 md:w-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === paginationInfo.totalPages}
+                  className="h-8 w-8 p-0"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3 w-3 md:h-4 md:w-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(paginationInfo.totalPages)}
                   disabled={currentPage === paginationInfo.totalPages}
+                  className="h-8 w-8 p-0"
                 >
-                  <ChevronsRight className="h-4 w-4" />
+                  <ChevronsRight className="h-3 w-3 md:h-4 md:w-4" />
                 </Button>
               </div>
             </div>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6 pt-0">
           {displayedProducts.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Package className="h-12 w-12 mx-auto mb-3 text-gray-300" />
@@ -1005,81 +1045,120 @@ const Inventory: React.FC = () => {
             </div>
           ) : viewMode === "list" ? (
             // List View
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-4">Product</th>
-                    <th className="text-left py-3 px-4">Category</th>
-                    <th className="text-left py-3 px-4">Price</th>
-                    <th className="text-left py-3 px-4">Cost</th>
-                    <th className="text-left py-3 px-4">Stock</th>
-                    <th className="text-left py-3 px-4">Status</th>
-                    <th className="text-left py-3 px-4">Actions</th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Product
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Category
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Price
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Cost
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Stock
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Status
+                    </th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayedProducts.map((product) => (
                     <tr key={product.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
+                        <div className="flex items-center gap-2">
                           {product.image ? (
                             <img
                               src={product.image}
                               alt={product.name}
-                              className="h-10 w-10 object-cover rounded"
+                              className="h-8 w-8 md:h-10 md:w-10 object-cover rounded shrink-0"
                             />
                           ) : (
-                            <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center">
-                              <Package className="h-5 w-5 text-gray-400" />
+                            <div className="h-8 w-8 md:h-10 md:w-10 bg-gray-200 rounded flex items-center justify-center shrink-0">
+                              <Package className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
                             </div>
                           )}
-                          <div>
-                            <div className="font-medium">{product.name}</div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-xs md:text-sm truncate">
+                              {product.name}
+                            </div>
                             {product.barcode && (
-                              <div className="text-sm text-gray-500">
+                              <div className="text-[10px] md:text-xs text-gray-500 truncate">
                                 📊 {product.barcode}
                               </div>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4">{product.category || "-"}</td>
-                      <td className="py-3 px-4 font-semibold text-green-600">
+                      <td className="py-2 md:py-3 px-2 md:px-4 text-xs md:text-sm">
+                        {product.category || "-"}
+                      </td>
+                      <td className="py-2 md:py-3 px-2 md:px-4 font-semibold text-green-600 text-xs md:text-sm">
                         {formatCurrency(
                           product.price == null ? 0 : product.price
                         )}
                       </td>
-                      <td className="py-3 px-4 text-gray-600">
+                      <td className="py-2 md:py-3 px-2 md:px-4 text-gray-600 text-xs md:text-sm">
                         {formatCurrency(
                           product.cost_price == null ? 0 : product.cost_price
                         )}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span>{product.stock_quantity}</span>
+                      <td className="py-2 md:py-3 px-2 md:px-4">
+                        <div className="flex items-center gap-1 md:gap-2">
+                          <span className="text-xs md:text-sm">
+                            {product.stock_quantity}
+                          </span>
                           {product.needs_restock && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] md:text-xs"
+                            >
                               Min: {product.min_stock_level}
                             </Badge>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
                         {product.stock_quantity === 0 ? (
-                          <Badge variant="destructive">Out of Stock</Badge>
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] md:text-xs"
+                          >
+                            Out of Stock
+                          </Badge>
                         ) : product.needs_restock ? (
-                          <Badge variant="secondary">Low Stock</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] md:text-xs"
+                          >
+                            Low Stock
+                          </Badge>
                         ) : (
-                          <Badge variant="default">In Stock</Badge>
+                          <Badge
+                            variant="default"
+                            className="text-[10px] md:text-xs"
+                          >
+                            In Stock
+                          </Badge>
                         )}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
+                      <td className="py-2 md:py-3 px-2 md:px-4">
+                        <div className="flex gap-1">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleEdit(product)}
+                            className="h-7 w-7 md:h-8 md:w-8 p-0"
                           >
                             <Edit className="h-3 w-3" />
                           </Button>
@@ -1087,7 +1166,7 @@ const Inventory: React.FC = () => {
                             variant="outline"
                             size="sm"
                             onClick={() => setProductToDelete(product)}
-                            className="text-red-600 hover:text-red-700"
+                            className="text-red-600 hover:text-red-700 h-7 w-7 md:h-8 md:w-8 p-0"
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1100,7 +1179,7 @@ const Inventory: React.FC = () => {
             </div>
           ) : (
             // Card View
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 2xl:grid-cols-10 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-4">
               {displayedProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}

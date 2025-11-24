@@ -1,7 +1,15 @@
 // src/hooks/api.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Product, Sale, DashboardStats, type Payment } from "@/types";
+import { 
+  Product, 
+  Sale, 
+  DashboardStats, 
+  Payment,
+  User,
+  Shift,
+  EmployeePerformance
+} from "@/types";
 import type { Customer } from "@/types";
 
 // Dashboard
@@ -173,9 +181,19 @@ export const useCreateSale = () => {
         })),
       };
 
-      console.log("Transformed sale data:", transformedData);
+      // Create an idempotency key to protect against duplicate requests
+      const idempotencyKey =
+        typeof crypto !== 'undefined' && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-      const { data } = await api.post("/sales/", transformedData);
+      console.log("Transformed sale data:", transformedData, "idempotencyKey:", idempotencyKey);
+
+      const { data } = await api.post("/sales/", transformedData, {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
+      });
       return data;
     },
     onSuccess: () => {
@@ -389,3 +407,161 @@ export const useCustomerById = (id?: number) => {
     enabled: !!id,
   });
 };
+
+// Admin - Users
+export const useUsers = () => {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: async (): Promise<User[]> => {
+      const { data } = await api.get("/users/");
+      // Handle both array and paginated response
+      return Array.isArray(data) ? data : data.results || [];
+    },
+  });
+};
+
+export const useCreateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userData: {
+      username: string;
+      password: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      is_staff?: boolean;
+    }) => {
+      const { data } = await api.post("/users/", userData);
+      return data as User;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+};
+
+export const useUpdateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...userData
+    }: {
+      id: number;
+      username?: string;
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+      is_staff?: boolean;
+      is_active?: boolean;
+    }) => {
+      const { data } = await api.patch(`/users/${id}/`, userData);
+      return data as User;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+};
+
+// Admin - Shifts
+export const useShifts = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ["shifts", startDate, endDate],
+    queryFn: async (): Promise<Shift[]> => {
+      const params: any = {};
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+      const { data } = await api.get("/shifts/", { params });
+      // Handle both array and paginated response
+      return Array.isArray(data) ? data : data.results || [];
+    },
+  });
+};
+
+export const useActiveShifts = () => {
+  return useQuery({
+    queryKey: ["shifts", "active"],
+    queryFn: async (): Promise<Shift[]> => {
+      const { data } = await api.get("/shifts/active/");
+      // Handle both array and paginated response
+      return Array.isArray(data) ? data : data.results || [];
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+};
+
+export const useShiftById = (id: number) => {
+  return useQuery({
+    queryKey: ["shifts", id],
+    queryFn: async (): Promise<Shift> => {
+      const { data } = await api.get(`/shifts/${id}/`);
+      return data;
+    },
+    enabled: !!id,
+  });
+};
+
+// Admin - Employee Performance
+export const useEmployeePerformance = (startDate?: string, endDate?: string) => {
+  return useQuery({
+    queryKey: ["employee-performance", startDate, endDate],
+    queryFn: async (): Promise<EmployeePerformance[]> => {
+      const params: any = {};
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+      const { data } = await api.get("/shifts/employee-performance/", { params });
+      return data;
+    },
+  });
+};
+
+// Shift Management - Get current user's active shift
+export const useMyShift = () => {
+  return useQuery<Shift | null>({
+    queryKey: ["my-shift"],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get("/shifts/my-shift/");
+        return data;
+      } catch (error: any) {
+        if (error.response?.status === 204) return null;
+        throw error;
+      }
+    },
+    refetchInterval: 60000, // Refetch every minute
+  });
+};
+
+// Start a new shift
+export const useStartShift = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { opening_cash: number; notes?: string; terminal_id?: string }) => {
+      const response = await api.post("/shifts/start/", data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-shift"] });
+      queryClient.invalidateQueries({ queryKey: ["active-shifts"] });
+    },
+  });
+};
+
+// End an active shift
+export const useEndShift = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { shiftId: number; closing_cash: number; notes?: string }) => {
+      const { shiftId, ...payload } = data;
+      const response = await api.post(`/shifts/${shiftId}/end/`, payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-shift"] });
+      queryClient.invalidateQueries({ queryKey: ["active-shifts"] });
+      queryClient.invalidateQueries({ queryKey: ["shifts"] });
+    },
+  });
+};
+
