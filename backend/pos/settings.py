@@ -30,6 +30,7 @@ SECRET_KEY = 'django-insecure-p^xhxv886d)e*)8)et_dwiwn+lc858t*jxa2*0svhyir%#h853
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
+ngrok_frontend_url = os.getenv('NGROK_FRONTEND_URL')
 # Base allowed hosts
 ALLOWED_HOSTS = [
     'localhost',
@@ -37,6 +38,7 @@ ALLOWED_HOSTS = [
     '0.0.0.0',
     'backend',
     'host.docker.internal',
+    ngrok_frontend_url,
 ]
 
 # Add environment-specific hosts
@@ -184,6 +186,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    ngrok_frontend_url,
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True  # Only for development!
@@ -236,3 +239,8 @@ LOGGING = {
         },
     },
 }
+
+ALLOWED_HOSTS_ORIGIN = [
+    "http://localhost:5173",
+    ngrok_frontend_url
+]

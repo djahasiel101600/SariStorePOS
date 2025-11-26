@@ -42,10 +42,13 @@ export const useWebSocket = () => {
     }
 
     // Determine WebSocket URL with JWT token
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-    const port = '8000'; // Use default Django port
-    const wsUrl = `${protocol}//${host}:${port}/ws/realtime/?token=${accessToken}`;
+    // const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // const host = window.location.hostname;
+    // const port = '8000'; // Use default Django port
+    // const wsUrl = `${protocol}//${host}:${port}/ws/realtime/?token=${accessToken}`;
+    const wsBaseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const cleanWsUrl = wsBaseUrl.replace(/\/$/, '');
+    const wsUrl = `${cleanWsUrl}/ws/realtime/?token=${accessToken}`;
 
     try {
       const ws = new WebSocket(wsUrl);

@@ -23,5 +23,8 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/media/, "/media"),
       },
     },
+    allowedHosts: [
+      "d048986fbda1.ngrok-free.app",
+    ],
   },
 });
