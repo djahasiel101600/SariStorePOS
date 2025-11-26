@@ -32,6 +32,21 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True).order_by('name')
     serializer_class = ProductSerializer
     search_fields = ['name', 'barcode', 'category']
+    permission_classes = [IsAuthenticated]
+    
+    def get_permissions(self):
+        """
+        Set permissions based on action:
+        - list, retrieve, search, low_stock: All authenticated users
+        - create, update, partial_update, destroy: Only admin, manager, inventory_manager
+        """
+        if self.action in ['list', 'retrieve', 'search', 'low_stock']:
+            # Read-only actions - all authenticated users
+            return [IsAuthenticated()]
+        else:
+            # Write actions - restricted roles
+            allowed_roles = ['admin', 'manager', 'inventory_manager']
+            return [RoleRequiredPermission(allowed_roles)]
     
     def get_queryset(self):
         return Product.objects.filter(is_active=True).order_by('name')
@@ -121,6 +136,26 @@ class ProductViewSet(viewsets.ModelViewSet):
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by('name')
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        Dynamically set allowed_roles based on action:
+        - Read actions (list, retrieve): all authenticated users
+        - Create/Update actions: all authenticated users (including cashiers)
+        - Delete action: only admin, manager, inventory_manager (NOT cashiers)
+        """
+        if self.action in ['list', 'retrieve']:
+            allowed_roles = ['admin', 'manager', 'cashier', 'inventory_manager']
+        elif self.action in ['create', 'update', 'partial_update']:
+            allowed_roles = ['admin', 'manager', 'cashier', 'inventory_manager']
+        elif self.action == 'destroy':
+            # Cashiers cannot delete customers
+            allowed_roles = ['admin', 'manager', 'inventory_manager']
+        else:
+            allowed_roles = ['admin', 'manager', 'inventory_manager']
+        
+        return [RoleRequiredPermission(allowed_roles)]
 
 class SaleViewSet(viewsets.ModelViewSet):
     # Require authentication by default; detailed role checks are applied in get_permissions()
@@ -142,6 +177,27 @@ class SaleViewSet(viewsets.ModelViewSet):
         # Return instances with the allowed_roles
         return [RoleRequiredPermission(allowed_roles)]
 
+    def get_queryset(self):
+        """
+        Filter sales based on user role:
+        - Admin and Manager: see all sales
+        - Cashier and others: see only their own sales
+        """
+        queryset = Sale.objects.all().order_by('-date_created')
+        user = self.request.user
+        
+        # Check user role
+        try:
+            user_role = user.profile.role
+            # Admin and Manager can see all sales
+            if user_role in ['admin', 'manager']:
+                return queryset
+        except AttributeError:
+            pass
+        
+        # Cashiers and others only see their own sales
+        # Filter by shift user (the person who made the sale)
+        return queryset.filter(shift__user=user)
 
     queryset = Sale.objects.all().order_by('-date_created')
     serializer_class = SaleSerializer
@@ -378,7 +434,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
       try:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        payment = serializer.save()
+        
+        # Get current active shift if user is authenticated
+        active_shift = None
+        if request.user.is_authenticated:
+            active_shift = Shift.objects.filter(user=request.user, end_time__isnull=True).first()
+        
+        # Save payment with shift reference
+        payment = serializer.save(shift=active_shift)
 
         # Apply payment to customer balance
         customer = payment.customer
@@ -1174,12 +1237,23 @@ class ShiftViewSet(viewsets.ModelViewSet):
         
         # Broadcast shift update
         try:
+            shift_data = ShiftSerializer(shift).data
+            print(f"DEBUG: shift_data type: {type(shift_data)}")
+            print(f"DEBUG: shift_data keys: {shift_data.keys() if hasattr(shift_data, 'keys') else 'N/A'}")
+            
+            # Check for Decimal values
+            for key, value in shift_data.items():
+                print(f"DEBUG: {key} = {value} (type: {type(value)})")
+            
+            # Convert to dict to ensure proper serialization
             broadcast_shift_update({
                 'action': 'started',
-                'shift': ShiftSerializer(shift).data
+                'shift': dict(shift_data)
             })
         except Exception as e:
             print(f"WebSocket broadcast error: {e}")
+            import traceback
+            traceback.print_exc()
         
         return Response(ShiftSerializer(shift).data, status=status.HTTP_201_CREATED)
     
@@ -1212,12 +1286,16 @@ class ShiftViewSet(viewsets.ModelViewSet):
         
         # Broadcast shift update
         try:
+            shift_data = ShiftSerializer(shift).data
+            # Convert to dict to ensure proper serialization
             broadcast_shift_update({
                 'action': 'ended',
-                'shift': ShiftSerializer(shift).data
+                'shift': dict(shift_data)
             })
         except Exception as e:
             print(f"WebSocket broadcast error: {e}")
+            import traceback
+            traceback.print_exc()
         
         return Response(ShiftSerializer(shift).data)
     

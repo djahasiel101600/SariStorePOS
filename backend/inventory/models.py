@@ -395,23 +395,42 @@ class Shift(models.Model):
     
     @property
     def total_sales(self):
-        """Total revenue from sales during this shift"""
+        """Total revenue from ALL sales during this shift (cash + credit)"""
         from django.db.models import Sum
         total = self.sales.aggregate(total=Sum('total_amount'))['total']
         return total or Decimal('0.00')
     
     @property
-    def expected_cash(self):
-        """Expected cash = opening cash + cash sales"""
-        if not self.sales.exists():
-            return self.opening_cash
-        
+    def cash_sales(self):
+        """Total from cash-only sales during this shift"""
         from django.db.models import Sum
-        cash_sales = self.sales.filter(payment_method='cash').aggregate(
+        cash_total = self.sales.filter(payment_method='cash').aggregate(
             total=Sum('total_amount')
-        )['total'] or Decimal('0.00')
-        
-        return self.opening_cash + cash_sales
+        )['total']
+        return cash_total or Decimal('0.00')
+    
+    @property
+    def credit_sales(self):
+        """Total from credit/utang sales during this shift"""
+        from django.db.models import Sum
+        credit_total = self.sales.filter(payment_method='utang').aggregate(
+            total=Sum('total_amount')
+        )['total']
+        return credit_total or Decimal('0.00')
+    
+    @property
+    def utang_payments_received(self):
+        """Total cash payments received for utang during this shift"""
+        from django.db.models import Sum
+        payments_total = self.payments.filter(method='cash').aggregate(
+            total=Sum('amount')
+        )['total']
+        return payments_total or Decimal('0.00')
+    
+    @property
+    def expected_cash(self):
+        """Expected cash = opening cash + cash sales + utang payments received"""
+        return self.opening_cash + self.cash_sales + self.utang_payments_received
     
     @property
     def cash_difference(self):
@@ -429,6 +448,7 @@ class Payment(models.Model):
     ]
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='payments')
     sale = models.ForeignKey(Sale, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
+    shift = models.ForeignKey(Shift, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', help_text='Shift when payment was received')
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
     method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='cash')
     notes = models.TextField(blank=True)

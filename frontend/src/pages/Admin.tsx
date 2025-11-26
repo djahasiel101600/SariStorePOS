@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errorHandling";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuthStore } from "@/store/authStore";
 import type { User, Shift } from "@/types";
 
@@ -180,20 +188,44 @@ const Admin: React.FC = () => {
                     </div>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Sales:</span>
+                        <span className="text-gray-600">Total Sales:</span>
                         <span className="font-semibold">
                           {shift.sales_count}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Revenue:</span>
+                        <span className="text-gray-600">Cash Sales:</span>
                         <span className="font-semibold text-green-600">
+                          {formatCurrency(shift.cash_sales || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Credit Sales:</span>
+                        <span className="font-semibold text-orange-600">
+                          {formatCurrency(shift.credit_sales || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Utang Payments:</span>
+                        <span className="font-semibold text-blue-600">
+                          {formatCurrency(shift.utang_payments_received || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t pt-2">
+                        <span className="text-gray-600">Total Revenue:</span>
+                        <span className="font-semibold text-blue-600">
                           {formatCurrency(shift.total_sales)}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Opening Cash:</span>
                         <span>{formatCurrency(shift.opening_cash)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Expected Cash:</span>
+                        <span className="font-semibold">
+                          {formatCurrency(shift.expected_cash || 0)}
+                        </span>
                       </div>
                     </div>
                     <Button
@@ -541,9 +573,18 @@ const Admin: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <Badge
-                              variant={user.is_staff ? "default" : "outline"}
+                              variant={
+                                user.role === "admin" || user.role === "manager"
+                                  ? "default"
+                                  : "outline"
+                              }
                             >
-                              {user.is_staff ? "Admin" : "Staff"}
+                              {user.role === "admin" && "Administrator"}
+                              {user.role === "manager" && "Manager"}
+                              {user.role === "inventory_manager" &&
+                                "Inventory Manager"}
+                              {user.role === "cashier" && "Cashier"}
+                              {!user.role && "No Role"}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -603,8 +644,9 @@ const Admin: React.FC = () => {
                   toast.success("User updated successfully");
                   setIsUserDialogOpen(false);
                 },
-                onError: () => {
-                  toast.error("Failed to update user");
+                onError: (error: unknown) => {
+                  console.error("Update user error:", error);
+                  toast.error(getErrorMessage(error));
                 },
               }
             );
@@ -614,8 +656,9 @@ const Admin: React.FC = () => {
                 toast.success("User created successfully");
                 setIsUserDialogOpen(false);
               },
-              onError: () => {
-                toast.error("Failed to create user");
+              onError: (error: unknown) => {
+                console.error("Create user error:", error);
+                toast.error(getErrorMessage(error));
               },
             });
           }
@@ -654,6 +697,7 @@ const UserDialog: React.FC<UserDialogProps> = ({
     last_name: "",
     is_staff: false,
     is_active: true,
+    role: "cashier" as string,
   });
 
   React.useEffect(() => {
@@ -666,6 +710,7 @@ const UserDialog: React.FC<UserDialogProps> = ({
         last_name: user.last_name,
         is_staff: user.is_staff,
         is_active: user.is_active,
+        role: user.role || "cashier",
       });
     } else {
       setFormData({
@@ -676,6 +721,7 @@ const UserDialog: React.FC<UserDialogProps> = ({
         last_name: "",
         is_staff: false,
         is_active: true,
+        role: "cashier",
       });
     }
   }, [user, isOpen]);
@@ -756,6 +802,28 @@ const UserDialog: React.FC<UserDialogProps> = ({
                 required
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Role</Label>
+            <Select
+              value={formData.role}
+              onValueChange={(value) =>
+                setFormData({ ...formData, role: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cashier">Cashier</SelectItem>
+                <SelectItem value="inventory_manager">
+                  Inventory Manager
+                </SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
+                <SelectItem value="admin">Administrator</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between">

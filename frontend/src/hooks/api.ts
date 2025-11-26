@@ -1,6 +1,7 @@
 // src/hooks/api.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { 
   Product, 
   Sale, 
@@ -220,6 +221,10 @@ export const useCreateProduct = () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
     },
+    onError: (error: unknown) => {
+      // Error will be handled in the component with getErrorMessage
+      console.error('Create product error:', error);
+    },
   });
 };
 
@@ -235,6 +240,10 @@ export const useUpdateProduct = () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
     },
+    onError: (error: unknown) => {
+      // Error will be handled in the component with getErrorMessage
+      console.error('Update product error:', error);
+    },
   });
 };
 
@@ -248,6 +257,10 @@ export const useDeleteProduct = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "stats"] });
+    },
+    onError: (error: unknown) => {
+      // Error will be handled in the component with getErrorMessage
+      console.error('Delete product error:', error);
     },
   });
 };
@@ -344,6 +357,9 @@ export const useCreateCustomer = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
     },
+    onError: (error: unknown) => {
+      console.error('Create customer error:', error);
+    },
   });
 };
 
@@ -358,6 +374,9 @@ export const useUpdateCustomer = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
     },
+    onError: (error: unknown) => {
+      console.error('Update customer error:', error);
+    },
   });
 };
 
@@ -370,6 +389,9 @@ export const useDeleteCustomer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+    onError: (error: unknown) => {
+      console.error('Delete customer error:', error);
     },
   });
 };
@@ -437,6 +459,9 @@ export const useCreateUser = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+    onError: (error: unknown) => {
+      console.error('Create user error:', error);
+    },
   });
 };
 
@@ -454,12 +479,16 @@ export const useUpdateUser = () => {
       last_name?: string;
       is_staff?: boolean;
       is_active?: boolean;
+      role?: string;
     }) => {
       const { data } = await api.patch(`/users/${id}/`, userData);
       return data as User;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (error: unknown) => {
+      console.error('Update user error:', error);
     },
   });
 };

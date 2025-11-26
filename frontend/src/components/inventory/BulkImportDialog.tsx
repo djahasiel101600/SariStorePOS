@@ -2,6 +2,7 @@
 import React, { useState, useRef } from "react";
 import { useBulkImportProducts } from "@/hooks/api";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errorHandling";
 import {
   Dialog,
   DialogContent,
@@ -175,7 +176,7 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
       );
     } catch (error: any) {
       console.error("Preview error:", error);
-      toast.error("Failed to preview CSV file");
+      toast.error(getErrorMessage(error));
     } finally {
       setIsPreviewing(false);
     }
@@ -224,7 +225,7 @@ const BulkImportDialog: React.FC<BulkImportDialogProps> = ({
       }, 2000);
     } catch (error: any) {
       console.error("Import error:", error);
-      toast.error("Failed to import products");
+      toast.error(getErrorMessage(error));
     } finally {
       setIsImporting(false);
     }

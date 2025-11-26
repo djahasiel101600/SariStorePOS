@@ -8,6 +8,7 @@ import { Product } from "@/types";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/api";
 import { toast } from "sonner";
 import { Loader2, X, Upload, Barcode } from "lucide-react";
+import { getErrorMessage } from "@/lib/errorHandling";
 // Lazy load ScannerDialog for client-side only
 const ScannerDialog = React.lazy(() => import("../pos/ScannerDialog"));
 import { Button } from "@/components/ui/button";
@@ -93,10 +94,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [showScanner, setShowScanner] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
-  const [imageSource, setImageSource] = useState<"blob" | "server" | "none">("none");
-  const [existingImagePath, setExistingImagePath] = useState<string | null>(null);
+  const [imageSource, setImageSource] = useState<"blob" | "server" | "none">(
+    "none"
+  );
+  const [existingImagePath, setExistingImagePath] = useState<string | null>(
+    null
+  );
   const [isDownloadingImage, setIsDownloadingImage] = useState<boolean>(false);
-
 
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -169,31 +173,39 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
         // If prefillData includes a remote image URL (handle Open Food Facts shape), try to download it via backend
         const anyPrefill = prefillData as any;
-        const remoteUrl = anyPrefill?.image
-        
-          console.log('Attempting to download remote image via backend:', prefillData.image);
-          if (remoteUrl && typeof remoteUrl === 'string') {
+        const remoteUrl = anyPrefill?.image;
+
+        console.log(
+          "Attempting to download remote image via backend:",
+          prefillData.image
+        );
+        if (remoteUrl && typeof remoteUrl === "string") {
           // set preview to remote url immediately
           setImagePreview(remoteUrl);
-          setImageSource('server');
+          setImageSource("server");
 
           // Call backend to download and save image, only if not already processed
           (async () => {
             setIsDownloadingImage(true);
             try {
               // Determine good name for saved file (handle product_name from Open Food Facts)
-              const givenName = anyPrefill?.name || anyPrefill?.product_name || anyPrefill?.product?.product_name || anyPrefill?.product?.name || 'product';
-              const resp = await fetch('/api/download-image/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+              const givenName =
+                anyPrefill?.name ||
+                anyPrefill?.product_name ||
+                anyPrefill?.product?.product_name ||
+                anyPrefill?.product?.name ||
+                "product";
+              const resp = await fetch("/api/download-image/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ url: remoteUrl, name: givenName }),
               });
 
               if (!resp.ok) {
                 // leave preview as remote URL; backend download may fail due to remote restrictions
                 const text = await resp.text();
-                console.warn('Backend image download failed', text);
-                toast.error('Failed to download image from remote service');
+                console.warn("Backend image download failed", text);
+                toast.error("Failed to download image from remote service");
                 setIsDownloadingImage(false);
                 return;
               }
@@ -202,16 +214,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
               if (data.image_url) {
                 // Use the public URL returned by storage for preview
                 setImagePreview(data.image_url);
-                setImageSource('server');
-                toast.success('Image downloaded and attached');
+                setImageSource("server");
+                toast.success("Image downloaded and attached");
               }
               if (data.image_path) {
                 // Save relative storage path to include in form submission when no file is selected
                 setExistingImagePath(data.image_path);
               }
             } catch (err) {
-              console.warn('Failed to download remote image via backend', err);
-              toast.error('Error downloading image from remote service');
+              console.warn("Failed to download remote image via backend", err);
+              toast.error("Error downloading image from remote service");
             } finally {
               setIsDownloadingImage(false);
             }
@@ -282,13 +294,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
         formData.append("image", image);
       } else if (existingImagePath) {
         // If backend already downloaded the image, attach the saved path so server can link it
-  console.debug('Appending existing_image_path to FormData:', existingImagePath);
-        formData.append('existing_image_path', existingImagePath);
+        console.debug(
+          "Appending existing_image_path to FormData:",
+          existingImagePath
+        );
+        formData.append("existing_image_path", existingImagePath);
       }
 
       return formData;
     },
-  [image, existingImagePath]
+    [image, existingImagePath]
   );
 
   const onSubmit = async (data: ProductFormData) => {
@@ -308,12 +323,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
       handleClose();
     } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : `Failed to ${isEditing ? "update" : "create"} product`;
-
-      toast.error(errorMessage);
+      console.error(
+        `Failed to ${isEditing ? "update" : "create"} product:`,
+        error
+      );
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -372,9 +386,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
                   <span className="text-sm text-gray-500">Upload Image</span>
                 </label>
               )}
-              {imageSource === 'server' && (
+              {imageSource === "server" && (
                 <p className="text-xs text-gray-500 mt-2">
-                  Remote image detected. It will be downloaded to the server and attached when you save.
+                  Remote image detected. It will be downloaded to the server and
+                  attached when you save.
                 </p>
               )}
               <input

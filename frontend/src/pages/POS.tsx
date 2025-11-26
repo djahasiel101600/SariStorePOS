@@ -1,5 +1,6 @@
 // src/pages/POS.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePOS } from "@/hooks/use-pos";
 import {
   useProductSearch,
@@ -12,8 +13,10 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { Product } from "@/types";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
 import CustomerSearch from "@/components/pos/CustomerSearch";
 import PaymentMethodSelector from "@/components/pos/PaymentMethodSelector";
 import CashTender from "@/components/pos/CashTendered";
@@ -48,6 +51,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 const POS: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  // Restrict Inventory Managers from accessing POS
+  useEffect(() => {
+    if (user?.role === "inventory_manager") {
+      toast.error("Access denied. Inventory Managers cannot access POS.");
+      navigate("/inventory");
+    }
+  }, [user, navigate]);
+
   const {
     cart,
     customer,
@@ -210,7 +224,7 @@ const POS: React.FC = () => {
       toast.success("Shift started successfully");
     } catch (err: any) {
       console.error("Start shift error", err);
-      toast.error(err.response?.data?.error || "Failed to start shift");
+      toast.error(getErrorMessage(err));
       throw err;
     }
   };
@@ -225,7 +239,7 @@ const POS: React.FC = () => {
       toast.success("Shift ended successfully");
     } catch (err: any) {
       console.error("End shift error", err);
-      toast.error(err.response?.data?.error || "Failed to end shift");
+      toast.error(getErrorMessage(err));
       throw err;
     }
   };
@@ -381,10 +395,8 @@ const POS: React.FC = () => {
       setIsCartOpen(false);
     } catch (error: any) {
       playSound("error");
-      console.error("Checkout error details:", error.response?.data);
-      toast.error(
-        `Failed to process ${paymentMethod === "utang" ? "utang" : "sale"}`
-      );
+      console.error("Checkout error details:", error);
+      toast.error(getErrorMessage(error));
     } finally {
       setProcessing(false);
     }

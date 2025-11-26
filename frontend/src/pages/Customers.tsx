@@ -4,6 +4,7 @@ import { useCustomers, useDeleteCustomer } from "@/hooks/api";
 import { Customer } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuthStore } from "@/store/authStore";
 import {
   Plus,
   Search,
@@ -23,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import RecordPaymentDialog from "@/components/customer/RecordPaymentDialog";
+import { getErrorMessage } from "@/lib/errorHandling";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +51,7 @@ const Customers: React.FC = () => {
     refetch: refetchCustomers,
   } = useCustomers();
   const deleteCustomer = useDeleteCustomer();
+  const { user } = useAuthStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("name");
@@ -58,7 +61,9 @@ const Customers: React.FC = () => {
     null
   );
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(
+    null
+  );
 
   // Safe data handling
   const customersArray: Customer[] = Array.isArray(customers) ? customers : [];
@@ -95,6 +100,10 @@ const Customers: React.FC = () => {
     (sum, customer) => sum + Number(customer.total_purchases),
     0
   );
+
+  // Check if user can delete customers (not cashier)
+  const canDeleteCustomer =
+    user?.role !== "cashier" && user?.role !== "inventory_manager";
   const averageSpend = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
 
   const handleEdit = (customer: Customer) => {
@@ -107,10 +116,11 @@ const Customers: React.FC = () => {
 
     try {
       await deleteCustomer.mutateAsync(customerToDelete.id);
-      toast.success("Customer deleted successfully");
+      toast.success(`Customer "${customerToDelete.name}" deleted successfully`);
       setCustomerToDelete(null);
     } catch (error) {
-      toast.error("Failed to delete customer");
+      console.error("Delete customer error:", error);
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -314,14 +324,16 @@ const Customers: React.FC = () => {
                         >
                           <Edit className="h-3 w-3" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCustomerToDelete(customer)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {canDeleteCustomer && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCustomerToDelete(customer)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -349,9 +361,13 @@ const Customers: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="text-xs uppercase tracking-wide text-gray-500">Outstanding:</span>
+                        <span className="text-xs uppercase tracking-wide text-gray-500">
+                          Outstanding:
+                        </span>
                         <span className="font-semibold text-amber-700">
-                          {formatCurrency((customer as any).outstanding_balance || 0)}
+                          {formatCurrency(
+                            (customer as any).outstanding_balance || 0
+                          )}
                         </span>
                       </div>
 

@@ -1,26 +1,26 @@
 // src/pages/Login.tsx
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { authService } from '../services/authService';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { authService } from "../services/authService";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '../components/ui/card';
-import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+} from "../components/ui/card";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
-  password: z.string().min(1, 'Password is required'),
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -40,14 +40,11 @@ export default function Login() {
     setIsLoading(true);
     try {
       await authService.login(data);
-      toast.success('Login successful!');
-      navigate('/');
+      toast.success("Login successful!");
+      navigate("/");
     } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        'Invalid username or password';
-      toast.error(errorMessage);
+      console.error("Login error:", error);
+      toast.error(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -70,11 +67,13 @@ export default function Login() {
                 id="username"
                 type="text"
                 placeholder="Enter your username"
-                {...register('username')}
-                aria-invalid={errors.username ? 'true' : 'false'}
+                {...register("username")}
+                aria-invalid={errors.username ? "true" : "false"}
               />
               {errors.username && (
-                <p className="text-sm text-red-600">{errors.username.message}</p>
+                <p className="text-sm text-red-600">
+                  {errors.username.message}
+                </p>
               )}
             </div>
 
@@ -84,26 +83,24 @@ export default function Login() {
                 id="password"
                 type="password"
                 placeholder="Enter your password"
-                {...register('password')}
-                aria-invalid={errors.password ? 'true' : 'false'}
+                {...register("password")}
+                aria-invalid={errors.password ? "true" : "false"}
               />
               {errors.password && (
-                <p className="text-sm text-red-600">{errors.password.message}</p>
+                <p className="text-sm text-red-600">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-            >
+            <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
                 </>
               ) : (
-                'Sign In'
+                "Sign In"
               )}
             </Button>
           </form>
@@ -112,4 +109,3 @@ export default function Login() {
     </div>
   );
 }
-

@@ -132,6 +132,7 @@ export interface User {
   is_staff: boolean;
   is_active: boolean;
   date_joined: string;
+  role?: string;
 }
 
 export interface Shift {
@@ -146,7 +147,11 @@ export interface Shift {
   cash_difference: number | null;
   sales_count: number;
   total_sales: number;
+  cash_sales: number;
+  credit_sales: number;
+  utang_payments_received: number;
   notes: string;
+  status: string;
 }
 
 export interface EmployeePerformance {

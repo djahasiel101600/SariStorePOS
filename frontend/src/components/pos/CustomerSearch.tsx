@@ -4,6 +4,7 @@ import { useCustomers, useCreateCustomer } from "@/hooks/api";
 import { usePOS } from "@/hooks/use-pos";
 import { Customer } from "@/types";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { Search, User, UserPlus, X, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,8 @@ const CustomerSearch: React.FC = () => {
       setIsDropdownOpen(false);
       toast.success(`Customer "${newCustomer.name}" added successfully`);
     } catch (error) {
-      toast.error("Failed to add customer");
+      console.error("Quick add customer error:", error);
+      toast.error(getErrorMessage(error));
     } finally {
       setIsAddingCustomer(false);
     }

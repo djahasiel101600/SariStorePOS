@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Customer } from "@/types";
 import { useCreateCustomer, useUpdateCustomer } from "@/hooks/api";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,7 +88,11 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
 
       handleClose();
     } catch (error) {
-      toast.error(`Failed to ${isEditing ? "update" : "create"} customer`);
+      console.error(
+        `Failed to ${isEditing ? "update" : "create"} customer:`,
+        error
+      );
+      toast.error(getErrorMessage(error));
     }
   };
 

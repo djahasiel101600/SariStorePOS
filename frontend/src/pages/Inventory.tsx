@@ -9,6 +9,7 @@ import {
 import { useProductApi } from "@/hooks/useProductApi";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorHandling";
 import { toast } from "sonner";
 import {
   Plus,
@@ -348,11 +349,13 @@ const Inventory: React.FC = () => {
 
     try {
       await deleteProduct.mutateAsync(productToDelete.id);
-      toast.success("Product deleted successfully");
+      toast.success(`Product "${productToDelete.name}" deleted successfully`);
       setProductToDelete(null);
       refetchProducts();
     } catch (error) {
-      toast.error("Failed to delete product");
+      const errorMessage = getErrorMessage(error);
+      toast.error(errorMessage);
+      console.error("Delete error:", error);
     }
   };
 

@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Product, Customer, Sale, SaleItem, Purchase, PurchaseItem, Payment
-from .models import Shift
+from .models import Shift, UserProfile
 
 class ShiftSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
@@ -15,9 +15,11 @@ class ShiftSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'user_name', 'start_time', 'end_time', 
             'opening_cash', 'closing_cash', 'expected_cash', 'cash_difference',
-            'sales_count', 'total_sales', 'notes', 'status'
+            'sales_count', 'total_sales', 'cash_sales', 'credit_sales',
+            'utang_payments_received', 'notes', 'status'
         ]
-        read_only_fields = ['sales_count', 'total_sales', 'expected_cash', 'cash_difference']
+        read_only_fields = ['sales_count', 'total_sales', 'cash_sales', 'credit_sales', 
+                           'utang_payments_received', 'expected_cash', 'cash_difference']
 
 class ShiftStartSerializer(serializers.ModelSerializer):
     """Serializer for starting a new shift"""
@@ -89,18 +91,38 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     # expose role from related UserProfile so frontend can make role-based UI decisions
-    role = serializers.SerializerMethodField(read_only=True)
+    role = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def get_role(self, obj):
         try:
             return getattr(obj.profile, 'role', None)
         except Exception:
             return None
+    
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['role'] = self.get_role(instance)
+        return ret
+    
+    def update(self, instance, validated_data):
+        # Extract role from validated data if present
+        role = validated_data.pop('role', None)
+        
+        # Update User fields
+        instance = super().update(instance, validated_data)
+        
+        # Update role in UserProfile if provided
+        if role is not None:
+            profile, created = UserProfile.objects.get_or_create(user=instance)
+            profile.role = role
+            profile.save()
+        
+        return instance
 
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined', 'role']
-        read_only_fields = ['id', 'date_joined', 'role']
+        read_only_fields = ['id', 'date_joined']
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
