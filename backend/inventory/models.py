@@ -469,6 +469,10 @@ class AuditLog(models.Model):
         ('USER_LOGOUT', 'User Logout'),
         ('ROLE_CHANGED', 'Role Changed'),
         ('INVENTORY_UPDATE', 'Inventory Updated'),
+        ('CUSTOMER_CREATED', 'Customer Created'),
+        ('CUSTOMER_UPDATED', 'Customer Updated'),
+        ('CUSTOMER_DELETED', 'Customer Deleted'),
+        ('PAYMENT_RECORDED', 'Payment Recorded'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='audit_logs')

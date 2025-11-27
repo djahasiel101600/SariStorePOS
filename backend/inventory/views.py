@@ -156,6 +156,41 @@ class CustomerViewSet(viewsets.ModelViewSet):
             allowed_roles = ['admin', 'manager', 'inventory_manager']
         
         return [RoleRequiredPermission(allowed_roles)]
+    
+    def perform_create(self, serializer):
+        """Log customer creation"""
+        customer = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CUSTOMER_CREATED',
+            model='Customer',
+            object_id=customer.id,
+            details=f'Customer "{customer.name}" created by {self.request.user.username}'
+        )
+    
+    def perform_update(self, serializer):
+        """Log customer update"""
+        customer = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CUSTOMER_UPDATED',
+            model='Customer',
+            object_id=customer.id,
+            details=f'Customer "{customer.name}" updated by {self.request.user.username}'
+        )
+    
+    def perform_destroy(self, instance):
+        """Log customer deletion"""
+        customer_name = instance.name
+        customer_id = instance.id
+        instance.delete()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CUSTOMER_DELETED',
+            model='Customer',
+            object_id=customer_id,
+            details=f'Customer "{customer_name}" deleted by {self.request.user.username}'
+        )
 
 class SaleViewSet(viewsets.ModelViewSet):
     # Require authentication by default; detailed role checks are applied in get_permissions()
@@ -500,6 +535,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
             # Note: The original payment record remains unlinked (sale=null) when distributed
             # This serves as an audit record of the total payment made
             # Individual sale payment histories show the split portions created above
+
+        # Log the payment
+        AuditLog.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            action='PAYMENT_RECORDED',
+            model='Payment',
+            object_id=payment.id,
+            details=f'Payment of ${payment.amount} recorded for customer "{customer.name}" by {request.user.username if request.user.is_authenticated else "Anonymous"}'
+        )
 
         return Response(self.get_serializer(payment).data, status=status.HTTP_201_CREATED)
       except Exception as e:
