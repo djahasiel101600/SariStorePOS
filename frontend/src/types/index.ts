@@ -51,6 +51,7 @@ export interface Sale {
   id: number;
   customer: number | null;
   customer_name: string;
+  cashier_name?: string;
   total_amount: number;
   amount_paid?: number;
   is_fully_paid?: boolean;
@@ -63,9 +64,33 @@ export interface Sale {
 
 export interface DashboardStats {
   sales: {
-    today: number;
-    week: number;
-    month: number;
+    today: {
+      total: number;
+      cash: number;
+      credit: number;
+    };
+    week: {
+      total: number;
+      cash: number;
+      credit: number;
+    };
+    month: {
+      total: number;
+      cash: number;
+      credit: number;
+    };
+    trend?: Array<{
+      date: string;
+      cash: number;
+      credit: number;
+      total: number;
+    }>;
+  };
+  profit: {
+    revenue: number;
+    cost: number;
+    gross_profit: number;
+    margin_percent: number;
   };
   inventory: {
     total_products: number;
@@ -78,6 +103,34 @@ export interface DashboardStats {
     product__id: number;
     total_sold: number;
     total_revenue: number;
+  }>;
+  payment_methods: Array<{
+    payment_method: string;
+    total: string;
+    count: number;
+  }>;
+  category_performance: Array<{
+    product__category: string;
+    total_revenue: string;
+    items_sold: number;
+  }>;
+  top_customers: Array<{
+    customer__id: number;
+    customer__name: string;
+    total_spent: string;
+    transaction_count: number;
+  }>;
+  shift_performance: Array<{
+    cashier__id: number;
+    cashier__username: string;
+    total_sales: string;
+    transaction_count: number;
+    avg_transaction: string;
+  }>;
+  hourly_pattern: Array<{
+    hour: number;
+    total: string;
+    count: number;
   }>;
 }
 

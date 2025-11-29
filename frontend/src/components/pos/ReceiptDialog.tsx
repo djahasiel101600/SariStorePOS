@@ -19,6 +19,7 @@ interface ReceiptDialogProps {
       product: { name: string; unit_type: string };
       quantity: number;
       unitPrice: number;
+      requestedAmount?: number | null;
     }>;
     total: number;
     paymentMethod: string;
@@ -77,9 +78,18 @@ export function ReceiptDialog({
     text += `------------------------------------------\n\n`;
 
     saleData.items.forEach((item) => {
+      const effectivePrice = item.requestedAmount ?? item.unitPrice;
+      const hasOverride =
+        item.requestedAmount != null && item.requestedAmount !== item.unitPrice;
+
       text += `${item.product.name}\n`;
-      text += `  ${item.quantity} ${item.product.unit_type} x ${formatCurrency(item.unitPrice)}\n`;
-      text += `  ${formatCurrency(item.quantity * item.unitPrice)}\n\n`;
+      if (hasOverride) {
+        text += `  ${item.quantity} ${item.product.unit_type} x ${formatCurrency(effectivePrice)} *ADJUSTED*\n`;
+        text += `  (Original: ${formatCurrency(item.unitPrice)})\n`;
+      } else {
+        text += `  ${item.quantity} ${item.product.unit_type} x ${formatCurrency(effectivePrice)}\n`;
+      }
+      text += `  ${formatCurrency(item.quantity * effectivePrice)}\n\n`;
     });
 
     text += `------------------------------------------\n`;
@@ -127,22 +137,59 @@ export function ReceiptDialog({
 
           <div className="border-t border-b border-gray-300 py-3 mb-3">
             <div className="font-semibold mb-2">ITEMS</div>
-            {saleData.items.map((item, index) => (
-              <div key={index} className="mb-3">
-                <div className="flex justify-between">
-                  <span className="flex-1">{item.product.name}</span>
+            {saleData.items.map((item, index) => {
+              const effectivePrice = item.requestedAmount ?? item.unitPrice;
+              const hasOverride =
+                item.requestedAmount != null &&
+                item.requestedAmount !== item.unitPrice;
+              const delta = hasOverride
+                ? item.requestedAmount! - item.unitPrice
+                : 0;
+              const percentage =
+                hasOverride && item.unitPrice !== 0
+                  ? (delta / item.unitPrice) * 100
+                  : 0;
+
+              return (
+                <div key={index} className="mb-3">
+                  <div className="flex justify-between">
+                    <span className="flex-1">{item.product.name}</span>
+                    {hasOverride && (
+                      <span className="text-xs text-orange-600 font-semibold">
+                        ADJUSTED{" "}
+                        {percentage > 0
+                          ? `+${percentage.toFixed(2)}%`
+                          : `${percentage.toFixed(2)}%`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>
+                      {item.quantity} {item.product.unit_type} x{" "}
+                      {hasOverride ? (
+                        <>
+                          <span className="line-through text-gray-400">
+                            {formatCurrency(item.unitPrice)}
+                          </span>{" "}
+                          <span className="text-orange-600 font-semibold">
+                            {formatCurrency(effectivePrice)}
+                          </span>
+                          <span className="text-orange-600 ml-1">
+                            ({delta > 0 ? "+" : ""}
+                            {formatCurrency(delta)})
+                          </span>
+                        </>
+                      ) : (
+                        formatCurrency(effectivePrice)
+                      )}
+                    </span>
+                    <span className="font-semibold">
+                      {formatCurrency(item.quantity * effectivePrice)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-xs text-gray-600">
-                  <span>
-                    {item.quantity} {item.product.unit_type} x{" "}
-                    {formatCurrency(item.unitPrice)}
-                  </span>
-                  <span className="font-semibold">
-                    {formatCurrency(item.quantity * item.unitPrice)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="space-y-2 text-sm">

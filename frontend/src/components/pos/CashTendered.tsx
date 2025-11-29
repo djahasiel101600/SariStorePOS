@@ -1,11 +1,11 @@
 // src/components/pos/CashTender.tsx
-import React from "react";
+import { forwardRef, useMemo, useState, memo } from "react";
 import { usePOS } from "@/hooks/use-pos";
 import { formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const CashTender: React.FC = () => {
+const CashTenderInner = forwardRef<HTMLInputElement>((_props, ref) => {
   const {
     cashTendered,
     setCashTendered,
@@ -14,13 +14,49 @@ const CashTender: React.FC = () => {
     paymentMethod,
   } = usePOS();
 
+  // Local state to control the input - prevents parent re-renders from affecting typing
+  const [inputValue, setInputValue] = useState("");
+
   const cartTotal = getCartTotal();
   const changeDue = getChangeDue();
 
-  // Quick cash buttons
-  const quickAmounts = [cartTotal, 50, 100, 500, 1000];
+  // Memoize quick amounts to prevent unnecessary re-renders
+  const quickAmounts = useMemo(
+    () => [cartTotal, 50, 100, 500, 1000],
+    [cartTotal]
+  );
 
   if (paymentMethod !== "cash") return null;
+
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+  };
+
+  const handleInputBlur = () => {
+    if (inputValue === "" || inputValue === "0") {
+      setCashTendered(0);
+      setInputValue("");
+      return;
+    }
+
+    const parsed = parseFloat(inputValue);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setCashTendered(parsed);
+    } else {
+      // Invalid input, reset to current value
+      setInputValue(cashTendered > 0 ? cashTendered.toString() : "");
+    }
+  };
+
+  const handleQuickAmount = (amount: number) => {
+    setCashTendered(amount);
+    setInputValue(amount.toString());
+  };
+
+  const handleClear = () => {
+    setCashTendered(0);
+    setInputValue("");
+  };
 
   return (
     <div className="space-y-3">
@@ -28,11 +64,11 @@ const CashTender: React.FC = () => {
 
       {/* Quick Amount Buttons */}
       <div className="grid grid-cols-3 gap-2">
-        {quickAmounts.map((amount) => (
+        {quickAmounts.map((amount, index) => (
           <button
-            key={amount}
+            key={`${amount}-${index}`}
             type="button"
-            onClick={() => setCashTendered(amount)}
+            onClick={() => handleQuickAmount(amount)}
             className="text-xs p-2 border rounded hover:bg-gray-50 transition-colors"
           >
             {formatCurrency(amount)}
@@ -40,7 +76,7 @@ const CashTender: React.FC = () => {
         ))}
         <button
           type="button"
-          onClick={() => setCashTendered(0)}
+          onClick={handleClear}
           className="text-xs p-2 border rounded hover:bg-gray-50 transition-colors col-span-3"
         >
           Clear
@@ -49,13 +85,15 @@ const CashTender: React.FC = () => {
 
       {/* Manual Input */}
       <Input
+        ref={ref}
         id="cashTendered"
         type="number"
         step="0.01"
         min="0"
-        value={cashTendered || ""}
-        onChange={(e) => setCashTendered(parseFloat(e.target.value) || 0)}
-        placeholder="Enter amount received"
+        value={inputValue}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onBlur={handleInputBlur}
+        placeholder="Enter amount received (F6)"
         className="text-lg font-semibold"
       />
 
@@ -83,6 +121,11 @@ const CashTender: React.FC = () => {
       )}
     </div>
   );
-};
+});
+
+CashTenderInner.displayName = "CashTenderInner";
+
+// Wrap with memo to prevent unnecessary re-renders
+const CashTender = memo(CashTenderInner);
 
 export default CashTender;

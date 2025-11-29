@@ -4,8 +4,6 @@ import { useDashboardStats } from "@/hooks/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   TrendingUp,
-  TrendingDown,
-  Package,
   AlertTriangle,
   ShoppingCart,
   Loader2,
@@ -66,8 +64,16 @@ const Dashboard: React.FC = () => {
                   Today's Sales
                 </p>
                 <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1 truncate">
-                  {formatCurrency(stats.sales.today)}
+                  {formatCurrency(stats.sales.today.total)}
                 </p>
+                <div className="flex gap-2 mt-2 text-xs">
+                  <span className="text-green-600">
+                    Cash: {formatCurrency(stats.sales.today.cash)}
+                  </span>
+                  <span className="text-orange-600">
+                    Credit: {formatCurrency(stats.sales.today.credit)}
+                  </span>
+                </div>
               </div>
               <div className="p-2 md:p-3 bg-green-100 rounded-full self-start">
                 <TrendingUp className="h-4 w-4 md:h-6 md:w-6 text-green-600" />
@@ -85,8 +91,16 @@ const Dashboard: React.FC = () => {
                   Monthly Sales
                 </p>
                 <p className="text-lg md:text-2xl font-bold text-gray-900 mt-1 truncate">
-                  {formatCurrency(stats.sales.month)}
+                  {formatCurrency(stats.sales.month.total)}
                 </p>
+                <div className="flex gap-2 mt-2 text-xs">
+                  <span className="text-green-600">
+                    Cash: {formatCurrency(stats.sales.month.cash)}
+                  </span>
+                  <span className="text-orange-600">
+                    Credit: {formatCurrency(stats.sales.month.credit)}
+                  </span>
+                </div>
               </div>
               <div className="p-2 md:p-3 bg-blue-100 rounded-full self-start">
                 <ShoppingCart className="h-4 w-4 md:h-6 md:w-6 text-blue-600" />
@@ -153,13 +167,13 @@ const Dashboard: React.FC = () => {
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-0">
             <div className="h-48 md:h-64 flex items-end justify-between gap-0.5 md:gap-1 overflow-x-auto">
-              {stats.sales.trend.map((day, index) => {
+              {stats.sales.trend?.map((day, index) => {
                 const maxAmount = Math.max(
-                  ...stats.sales.trend.map((d) => d.amount)
+                  ...(stats.sales.trend?.map((d) => d.total) || [0])
                 );
                 const height =
-                  maxAmount > 0 ? (day.amount / maxAmount) * 100 : 0;
-                const isToday = index === stats.sales.trend.length - 1;
+                  maxAmount > 0 ? (day.total / maxAmount) * 100 : 0;
+                const isToday = index === (stats.sales.trend?.length || 0) - 1;
 
                 return (
                   <div
@@ -174,7 +188,7 @@ const Dashboard: React.FC = () => {
                       }`}
                       style={{
                         height: `${height}%`,
-                        minHeight: day.amount > 0 ? "4px" : "0",
+                        minHeight: day.total > 0 ? "4px" : "0",
                       }}
                     />
                     {/* Tooltip */}
@@ -184,7 +198,15 @@ const Dashboard: React.FC = () => {
                         day: "numeric",
                       })}
                       <br />
-                      {formatCurrency(day.amount)}
+                      Total: {formatCurrency(day.total)}
+                      <br />
+                      <span className="text-green-400">
+                        Cash: {formatCurrency(day.cash)}
+                      </span>
+                      <br />
+                      <span className="text-orange-400">
+                        Credit: {formatCurrency(day.credit)}
+                      </span>
                     </div>
                   </div>
                 );
@@ -231,7 +253,7 @@ const Dashboard: React.FC = () => {
                           {method.payment_method}
                         </span>
                         <span className="text-xs md:text-sm text-gray-600 ml-2">
-                          {formatCurrency(method.total)}
+                          {formatCurrency(parseFloat(method.total))}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
@@ -289,7 +311,7 @@ const Dashboard: React.FC = () => {
                         </div>
                       </div>
                       <p className="font-semibold text-sm md:text-base text-gray-900 shrink-0">
-                        {formatCurrency(cat.total_revenue)}
+                        {formatCurrency(parseFloat(cat.total_revenue))}
                       </p>
                     </div>
                   ))}
@@ -438,7 +460,7 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
                     <p className="font-semibold text-sm md:text-base text-gray-900 shrink-0">
-                      {formatCurrency(customer.total_spent)}
+                      {formatCurrency(parseFloat(customer.total_spent))}
                     </p>
                   </div>
                 ))}
@@ -475,12 +497,12 @@ const Dashboard: React.FC = () => {
                         </p>
                         <p className="text-xs text-gray-500 truncate">
                           {perf.transaction_count} sales • Avg:{" "}
-                          {formatCurrency(perf.avg_transaction)}
+                          {formatCurrency(parseFloat(perf.avg_transaction))}
                         </p>
                       </div>
                     </div>
                     <p className="font-semibold text-sm md:text-base text-gray-900 shrink-0">
-                      {formatCurrency(perf.total_sales)}
+                      {formatCurrency(parseFloat(perf.total_sales))}
                     </p>
                   </div>
                 ))}
@@ -503,9 +525,9 @@ const Dashboard: React.FC = () => {
             <div className="h-40 md:h-48 flex items-end justify-between gap-0.5 md:gap-1 overflow-x-auto">
               {Array.from({ length: 24 }, (_, i) => {
                 const hourData = stats.hourly_pattern.find((h) => h.hour === i);
-                const amount = hourData?.total || 0;
+                const amount = hourData?.total ? parseFloat(hourData.total) : 0;
                 const maxAmount = Math.max(
-                  ...stats.hourly_pattern.map((h) => parseFloat(h.total || 0))
+                  ...stats.hourly_pattern.map((h) => parseFloat(h.total || "0"))
                 );
                 const height = maxAmount > 0 ? (amount / maxAmount) * 100 : 0;
 

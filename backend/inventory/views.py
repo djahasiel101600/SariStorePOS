@@ -552,33 +552,83 @@ class PaymentViewSet(viewsets.ModelViewSet):
 class DashboardViewSet(viewsets.ViewSet):
     def stats(self, request):
         try:
-            today = timezone.now().date()
+            # Use timezone-aware local datetime (respect settings.TIME_ZONE)
+            # timezone.now() returns a timezone-aware datetime in UTC when
+            # USE_TZ=True; use localtime() so date calculations reflect the
+            # configured TIME_ZONE (e.g. Asia/Manila)
+            now = timezone.localtime()
+            today = now.date()
             week_ago = today - timedelta(days=7)
             month_ago = today - timedelta(days=30)
             
-            # Sales data
-            today_sales = Sale.objects.filter(date_created__date=today).aggregate(
-                total=Sum('total_amount')
-            )['total'] or 0
+            # Debug logging
+            print(f"Dashboard Stats - Current time: {now}")
+            print(f"Dashboard Stats - Today's date: {today}")
             
-            weekly_sales = Sale.objects.filter(date_created__date__gte=week_ago).aggregate(
-                total=Sum('total_amount')
-            )['total'] or 0
+            # Sales data - separated by payment method
+            # Today's sales - ensure we're comparing dates correctly
+            today_cash_sales = Sale.objects.filter(
+                date_created__date=today,
+                payment_method='cash'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
             
-            monthly_sales = Sale.objects.filter(date_created__date__gte=month_ago).aggregate(
-                total=Sum('total_amount')
-            )['total'] or 0
+            today_credit_sales = Sale.objects.filter(
+                date_created__date=today,
+                payment_method='utang'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
             
-            # Sales trends - last 30 days daily breakdown
+            # Debug: Check what sales exist
+            today_sales_count = Sale.objects.filter(date_created__date=today).count()
+            print(f"Dashboard Stats - Today's sale count: {today_sales_count}")
+            print(f"Dashboard Stats - Today cash: {today_cash_sales}, credit: {today_credit_sales}")
+            
+            today_sales = today_cash_sales + today_credit_sales
+            
+            # Weekly sales
+            weekly_cash_sales = Sale.objects.filter(
+                date_created__date__gte=week_ago,
+                payment_method='cash'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            
+            weekly_credit_sales = Sale.objects.filter(
+                date_created__date__gte=week_ago,
+                payment_method='utang'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            
+            weekly_sales = weekly_cash_sales + weekly_credit_sales
+            
+            # Monthly sales
+            monthly_cash_sales = Sale.objects.filter(
+                date_created__date__gte=month_ago,
+                payment_method='cash'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            
+            monthly_credit_sales = Sale.objects.filter(
+                date_created__date__gte=month_ago,
+                payment_method='utang'
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            
+            monthly_sales = monthly_cash_sales + monthly_credit_sales
+            
+            # Sales trends - last 30 days daily breakdown with cash/credit separation
             sales_trend = []
             for i in range(29, -1, -1):
                 date = today - timedelta(days=i)
-                daily_total = Sale.objects.filter(
-                    date_created__date=date
+                daily_cash = Sale.objects.filter(
+                    date_created__date=date,
+                    payment_method='cash'
                 ).aggregate(total=Sum('total_amount'))['total'] or 0
+                
+                daily_credit = Sale.objects.filter(
+                    date_created__date=date,
+                    payment_method='utang'
+                ).aggregate(total=Sum('total_amount'))['total'] or 0
+                
                 sales_trend.append({
                     'date': date.isoformat(),
-                    'amount': float(daily_total)
+                    'cash': float(daily_cash),
+                    'credit': float(daily_credit),
+                    'total': float(daily_cash + daily_credit)
                 })
             
             # Payment method breakdown (last 30 days)
@@ -693,9 +743,21 @@ class DashboardViewSet(viewsets.ViewSet):
             
             return Response({
                 'sales': {
-                    'today': float(today_sales),
-                    'week': float(weekly_sales),
-                    'month': float(monthly_sales),
+                    'today': {
+                        'total': float(today_sales),
+                        'cash': float(today_cash_sales),
+                        'credit': float(today_credit_sales),
+                    },
+                    'week': {
+                        'total': float(weekly_sales),
+                        'cash': float(weekly_cash_sales),
+                        'credit': float(weekly_credit_sales),
+                    },
+                    'month': {
+                        'total': float(monthly_sales),
+                        'cash': float(monthly_cash_sales),
+                        'credit': float(monthly_credit_sales),
+                    },
                     'trend': sales_trend,
                 },
                 'profit': {

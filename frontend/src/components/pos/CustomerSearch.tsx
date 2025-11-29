@@ -95,6 +95,20 @@ const CustomerSearch: React.FC = () => {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      e.preventDefault();
+
+      // If there are filtered customers, select the first one
+      if (filteredCustomers.length > 0) {
+        handleSelectCustomer(filteredCustomers[0]);
+      } else {
+        // No existing customers, quick add new customer
+        handleQuickAddCustomer();
+      }
+    }
+  };
+
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Search Input */}
@@ -103,11 +117,14 @@ const CustomerSearch: React.FC = () => {
         <Input
           ref={searchInputRef}
           placeholder={
-            selectedCustomer ? selectedCustomer.name : "Search customer..."
+            selectedCustomer
+              ? selectedCustomer.name
+              : "Search customer (Enter to select)..."
           }
           value={searchQuery}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
+          onKeyDown={handleKeyDown}
           className="pl-10 pr-20"
           disabled={!!selectedCustomer}
         />
